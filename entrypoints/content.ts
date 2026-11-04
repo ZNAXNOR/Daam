@@ -1,6 +1,6 @@
 export default defineContentScript({
-  matches: ['*://*.google.com/*'],
+  matches: ['*://*.flipkart.com/*'],
   main() {
-    console.log('Hello content.');
+    console.log('⚡ Daam extension sensor active on this page!');
   },
 });

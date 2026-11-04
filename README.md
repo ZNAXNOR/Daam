@@ -28,6 +28,19 @@ Powered by passive community browsing and 64-bit client-side perceptual image ha
 
 ## Getting Started
 
+### Current implementation milestone
+
+The extension sensor currently provides:
+
+- typed product and ingestion contracts in `src/contracts/`;
+- Amazon product-page extraction with exchange-price protection and payload validation;
+- client-side 64-bit dHash generation for loaded product images;
+- cached selector configuration through WXT storage;
+- up to 42 Amazon search-card snapshots sent to the background batch queue.
+
+The backend ingestion API, web hub, and additional retailer modules remain
+separate roadmap features and should be implemented in their own repositories.
+
 ### 1. Prerequisites (`Node.js` & `pnpm`)
 
 Make sure you have **Node.js (v20+)** installed. This project strictly uses **`pnpm`**.
