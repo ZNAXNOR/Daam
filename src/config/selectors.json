@@ -1,81 +1,38 @@
 {
-  "amazon": {
-    "default": {
-      "asin": [
-        "input#ASIN",
-        "#ASIN"
-      ],
-      "merchantId": [
-        "input#merchantID",
-        "#merchantID"
-      ],
-      "dealPrice": [
-        "input[name='items[0.base][customerVisiblePrice][amount]']",
-        "#corePriceDisplay_desktop_feature_div .a-price-whole",
-        ".apex-pricetopay-value",
-        ".apex-price-to-pay-value",
-        ".priceToPay .a-offscreen",
-        "#priceblock_ourprice",
-        "#priceblock_dealprice",
-        "#priceblock_saleprice",
-        "#apex_desktop .a-price .a-offscreen"
-      ],
-      "mrp": [
-        "span.a-price.a-text-price > span.a-offscreen"
-      ],
-      "productRoots": [
-        "#apex_desktop",
-        "#centerCol"
-      ],
-      "title": [
-        "#productTitle"
-      ],
-      "sellerName": [
-        "#sellerProfileTriggerId"
-      ],
-      "availability": [
-        "#availability",
-        "#outOfStock"
-      ],
-      "image": [
-        "#landingImage"
-      ],
-      "couponMetadata": [
-        "[data-a-modal]"
-      ],
-      "searchCards": [
-        "[data-asin]"
-      ],
-      "searchTitle": [
-        "[data-cy='title-recipe']",
-        "h2"
-      ],
-      "searchPrice": [
-        ".a-price .a-offscreen"
-      ],
-      "exchangeState": [
-        "[role='tab']",
-        "[aria-selected='true']",
-        ".a-tab-active",
-        ".selected"
-      ]
-    },
-    "overrides": {
-      "amazon_co_uk": {
-        "dealPrice": [
-          ".apex-core-price-identifier .apex-pricetopay-value",
-          ".apex-core-price-identifier .priceToPay .a-offscreen",
-          "input[name='items[0.base][customerVisiblePrice][amount]']"
-        ],
-        "mrp": [
-          ".apex-basisprice-value .a-offscreen",
-          ".basisPrice .a-offscreen"
-        ],
-        "title": [
-          "#title",
-          "#productTitle"
-        ]
-      }
-    }
+  "amazon_in": {
+    "asin": [
+      "input#ASIN",
+      "input[name='ASIN']",
+      "[data-asin]"
+    ],
+    "title": [
+      "#productTitle",
+      "#title"
+    ],
+    "dealPrice": [
+      "input[name='items[0.base][customerVisiblePrice][amount]']",
+      "#corePriceDisplay_desktop_feature_div .a-price .a-offscreen",
+      "#apex_desktop .a-price .a-offscreen",
+      "#priceblock_dealprice",
+      "#priceblock_ourprice"
+    ],
+    "mrp": [
+      ".basisPrice .a-offscreen",
+      ".a-price.a-text-price .a-offscreen",
+      "#listPrice"
+    ],
+    "merchantId": [
+      "input#merchantID",
+      "input[name='merchantID']",
+      "[data-merchant-id]"
+    ],
+    "sellerName": [
+      "#sellerProfileTriggerId",
+      "#bylineInfo"
+    ],
+    "availability": [
+      "#availability",
+      "#outOfStock"
+    ]
   }
 }

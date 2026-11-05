@@ -1,28 +1,26 @@
-import type { ProductPayload } from "../src/contracts/product";
-import type { DaamRuntimeMessage } from "../src/harvesting/messages";
+import type { ProductPayload } from "../src/extractors/amazon";
+
+interface ProductMessage {
+	type: "DAAM_PRODUCT_EXTRACTED";
+	payload: ProductPayload;
+}
+
+const DEBOUNCE_MS = 5 * 60 * 1000;
 
 export default defineBackground(() => {
-	const queue: ProductPayload[] = [];
-
-	browser.runtime.onMessage.addListener((message: DaamRuntimeMessage) => {
-		if (message.type !== "DAAM_HARVEST_PRODUCTS") {
+	browser.runtime.onMessage.addListener(async (message: ProductMessage) => {
+		if (message.type !== "DAAM_PRODUCT_EXTRACTED") {
 			return;
 		}
 
-		queue.push(...message.payloads);
+		const key = `daam:last-sent:${message.payload.productId}`;
+		const stored = await browser.storage.session.get(key);
+		const lastSent = stored[key];
+		if (typeof lastSent === "number" && Date.now() - lastSent < DEBOUNCE_MS) {
+			return;
+		}
+
+		await browser.storage.session.set({ [key]: Date.now() });
+		console.info("Daam product payload ready for backend", message.payload);
 	});
-
-	setInterval(() => {
-		if (queue.length === 0) {
-			return;
-		}
-
-		const batch = queue.splice(0, queue.length);
-		console.info("Daam local harvest batch", {
-			count: batch.length,
-			products: batch,
-		});
-	}, 15_000);
-
-	console.info("Daam background sensor active", { id: browser.runtime.id });
 });

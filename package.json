@@ -23,6 +23,7 @@
     "wxt": "^0.21.3"
   },
   "dependencies": {
+    "@material/web": "^2.5.0",
     "lucide": "^1.66.0"
   }
 }
