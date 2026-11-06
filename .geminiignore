@@ -1,0 +1,21 @@
+# Compressed archives
+*.zip
+*.tar
+*.gz
+*.7z
+*.rar
+
+# Binary / Database files
+*.db
+*.sqlite
+*.sqlite3
+*.bin
+*.exe
+
+# Heavy build/media assets
+dist/
+build/
+node_modules/
+*.png
+*.jpg
+*.pdf
