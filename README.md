@@ -41,6 +41,34 @@ The extension sensor currently provides:
 The backend ingestion API, web hub, and additional retailer modules remain
 separate roadmap features and should be implemented in their own repositories.
 
+### Database foundation
+
+The initial Neon/Drizzle schema is isolated under `src/db/` so server-only
+database code is not imported into the browser extension entrypoints.
+
+1. Copy `.env.example` to `.env` and set `DATABASE_URL` to a Neon PostgreSQL
+   connection string. Never commit `.env`.
+2. Generate a migration after schema changes:
+
+   ```bash
+   pnpm db:generate
+   ```
+
+3. Apply tracked migrations to the configured database:
+
+   ```bash
+   pnpm db:migrate
+   ```
+
+For quick development-only schema iteration, Drizzle Kit also exposes:
+
+```bash
+pnpm db:push
+```
+
+The schema uses integer identity keys and lookup foreign keys so
+`price_history` does not repeat platform or seller strings.
+
 ### 1. Prerequisites (`Node.js` & `pnpm`)
 
 Make sure you have **Node.js (v20+)** installed. This project strictly uses **`pnpm`**.
