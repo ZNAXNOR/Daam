@@ -32,21 +32,21 @@ Powered by passive community browsing and 64-bit client-side perceptual image ha
 
 The extension sensor currently provides:
 
-- typed product and ingestion contracts in `src/contracts/`;
+- typed product and ingestion contracts in `packages/contracts/`;
 - Amazon product-page extraction with exchange-price protection and payload validation;
 - client-side 64-bit dHash generation for loaded product images;
 - cached selector configuration through WXT storage;
 - up to 42 Amazon search-card snapshots sent to the background batch queue.
 
-The backend ingestion API, web hub, and additional retailer modules remain
-separate roadmap features and should be implemented in their own repositories.
+The backend ingestion API and web hub live in `apps/web/`, while the browser
+sensor remains isolated in `apps/extension/`.
 
 ### Database foundation
 
-The initial Neon/Drizzle schema is isolated under `src/db/` so server-only
-database code is not imported into the browser extension entrypoints.
+The Neon/Drizzle schema is isolated under `apps/web/src/db/` so server-only
+database code is not imported into the browser extension package.
 
-1. Copy `.env.example` to `.env` and set `DATABASE_URL` to a Neon PostgreSQL
+1. Copy `apps/web/.env.example` to `apps/web/.env` and set `DATABASE_URL` to a Neon PostgreSQL
    connection string. Never commit `.env`.
 2. Generate a migration after schema changes:
 
@@ -100,7 +100,7 @@ pnpm install
 ### 3. Run the Extension in Development Mode
 
 ```bash
-# Start WXT dev server (opens a dedicated Chrome instance with Hot Reload)
+# Start the extension WXT dev server (opens a dedicated Chrome instance with Hot Reload)
 pnpm dev
 
 # Or run in Firefox
@@ -113,7 +113,7 @@ pnpm dev:firefox
 # Typecheck the codebase
 pnpm compile
 
-# Build production bundle (.output/)
+# Build the extension and web packages
 pnpm build
 
 # Package into store-ready .zip files

@@ -1,4 +1,4 @@
-import type { ProductPayload } from "../extractors/amazon";
+import type { ProductPayload } from "@daam/contracts";
 
 export interface AssistChipView {
 	root: HTMLDivElement;

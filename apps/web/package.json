@@ -1,0 +1,31 @@
+{
+  "name": "@daam/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "compile": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push"
+  },
+  "dependencies": {
+    "@daam/contracts": "workspace:*",
+    "@neondatabase/serverless": "^1.2.0",
+    "dotenv": "^18.0.9",
+    "drizzle-orm": "^0.45.4",
+    "next": "^16.0.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "drizzle-kit": "^0.31.11",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,4 +1,4 @@
-import type { ProductPayload } from "../contracts/product";
+import type { ProductPayload } from "@daam/contracts";
 
 export interface HarvestProductsMessage {
 	type: "DAAM_HARVEST_PRODUCTS";

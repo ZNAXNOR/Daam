@@ -1,5 +1,6 @@
 import "../assets/tailwind.css";
-import { extractAmazonData, type ProductPayload } from "../src/extractors/amazon";
+import type { ProductPayload } from "@daam/contracts";
+import { extractAmazonData } from "../src/extractors/amazon";
 import { createAssistChip, type AssistChipView } from "../src/ui/AssistChip";
 import { watchForChanges } from "../src/utils/observer";
 
@@ -227,7 +228,10 @@ export default defineContentScript({
 
 				const stateKey = `success:${payload.productId}:${payload.sellerId}:${payload.dealPrice}`;
 				if (stateKey !== renderedState) {
-					lastSeen = { asin: payload.productId, sellerId: payload.sellerId };
+					lastSeen = {
+						asin: payload.productId,
+						sellerId: payload.sellerId ?? null,
+					};
 					await browser.runtime.sendMessage({ type: "DAAM_PRODUCT_EXTRACTED", payload });
 					await mountChip("success", payload);
 				}

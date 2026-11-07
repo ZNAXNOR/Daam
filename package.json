@@ -3,36 +3,16 @@
   "description": "Open-source price intelligence and fake discount detector.",
   "private": true,
   "version": "0.0.0",
-  "type": "module",
+  "packageManager": "pnpm@10.12.1",
   "scripts": {
-    "dev": "wxt",
-    "dev:firefox": "wxt -b firefox",
-    "build": "wxt build",
-    "build:firefox": "wxt build -b firefox",
-    "zip": "wxt zip",
-    "zip:firefox": "wxt zip -b firefox",
-    "compile": "tsc --noEmit",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
-    "db:push": "drizzle-kit push",
-    "postinstall": "wxt prepare"
-  },
-  "devDependencies": {
-    "@tailwindcss/vite": "^4.3.3",
-    "@types/node": "^26.6.6",
-    "drizzle-kit": "^0.31.11",
-    "tailwindcss": "^4.3.3",
-    "tsx": "^4.23.15",
-    "typescript": "^5.9.3",
-    "vite": "^8.1.5",
-    "web-ext": "^10.5.0",
-    "wxt": "^0.21.3"
-  },
-  "dependencies": {
-    "@material/web": "^2.5.0",
-    "@neondatabase/serverless": "^1.2.0",
-    "dotenv": "^18.0.9",
-    "drizzle-orm": "^0.45.4",
-    "lucide": "^1.66.0"
+    "compile": "pnpm --recursive --if-present compile",
+    "build": "pnpm --filter @daam/extension build && pnpm --filter @daam/web build",
+    "dev": "pnpm --filter @daam/extension dev",
+    "dev:firefox": "pnpm --filter @daam/extension dev:firefox",
+    "db:generate": "pnpm --filter @daam/web db:generate",
+    "db:migrate": "pnpm --filter @daam/web db:migrate",
+    "db:push": "pnpm --filter @daam/web db:push",
+    "zip": "pnpm --filter @daam/extension zip",
+    "zip:firefox": "pnpm --filter @daam/extension zip:firefox"
   }
 }

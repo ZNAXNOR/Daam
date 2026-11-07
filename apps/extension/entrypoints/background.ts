@@ -1,4 +1,4 @@
-import type { ProductPayload } from "../src/extractors/amazon";
+import type { ProductPayload } from "@daam/contracts";
 
 interface ProductMessage {
 	type: "DAAM_PRODUCT_EXTRACTED";

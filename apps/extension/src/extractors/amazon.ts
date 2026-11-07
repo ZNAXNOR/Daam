@@ -1,18 +1,5 @@
 import selectors from "../config/selectors.json";
-
-export interface ProductPayload {
-	platform: "amazon_in";
-	productId: string;
-	title: string;
-	dealPrice: number;
-	mrp: number | null;
-	currency: "INR";
-	inStock: boolean;
-	sellerName: string | null;
-	sellerId: string | null;
-	extractionMethod: string;
-	timestamp: number;
-}
+import type { ProductPayload } from "@daam/contracts";
 
 interface AmazonSelectors {
 	asin: string[];

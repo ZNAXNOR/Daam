@@ -17,11 +17,12 @@ export interface ProductPayload {
 	productId: string;
 	title: string;
 	dealPrice: number;
-	mrp?: number;
+	mrp?: number | null;
 	currency: string;
 	couponDiscount?: number;
 	inStock: boolean;
-	sellerName?: string;
+	sellerName?: string | null;
+	sellerId?: string | null;
 	imageHash?: string;
 	extractionMethod: ExtractionMethod;
 	timestamp: number;
@@ -70,7 +71,7 @@ export function validateProductPayload(
 		errors.push("INVALID_DEAL_PRICE");
 	}
 
-	if (payload.mrp !== undefined) {
+	if (payload.mrp !== undefined && payload.mrp !== null) {
 		if (!Number.isFinite(payload.mrp) || payload.mrp <= 0) {
 			errors.push("INVALID_MRP");
 		} else if (payload.dealPrice > payload.mrp * 1.05) {
