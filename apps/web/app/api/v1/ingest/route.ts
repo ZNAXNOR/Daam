@@ -7,9 +7,13 @@ import {
 	findLatestPriceHistory,
 	insertPriceHistory,
 	resolveSeller,
+	updateLatestPriceHistory,
 	upsertPlatform,
 	upsertProduct,
 } from "@/src/db/queries";
+
+const DEBOUNCE_WINDOW_MS = 60 * 60 * 1000;
+const MAX_ACCEPTED_PRICE_DROP = 0.15;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
@@ -100,6 +104,29 @@ export async function POST(request: Request): Promise<Response> {
 			latest.inStock === payload.inStock
 		) {
 			return response(payload.productId, "SKIPPED_DEDUPLICATED");
+		}
+
+		if (latest) {
+			const elapsedMs =
+				new Date().getTime() - latest.recordedAt.getTime();
+
+			if (elapsedMs < DEBOUNCE_WINDOW_MS) {
+				if (payload.dealPrice < latest.dealPrice) {
+					await updateLatestPriceHistory(latest.id, payload.dealPrice);
+				}
+
+				return response(payload.productId, "SKIPPED_DEDUPLICATED");
+			}
+
+			const priceDrop =
+				(latest.dealPrice - payload.dealPrice) / latest.dealPrice;
+			if (priceDrop > MAX_ACCEPTED_PRICE_DROP) {
+				return response(
+					payload.productId,
+					"REJECTED_ANOMALY",
+					406,
+				);
+			}
 		}
 
 		await insertPriceHistory({
