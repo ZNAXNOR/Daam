@@ -232,7 +232,11 @@ export default defineContentScript({
 						asin: payload.productId,
 						sellerId: payload.sellerId ?? null,
 					};
-					await browser.runtime.sendMessage({ type: "DAAM_PRODUCT_EXTRACTED", payload });
+					const ingestionResult = await browser.runtime.sendMessage({
+						type: "DAAM_PRODUCT_EXTRACTED",
+						payload,
+					});
+					console.info("[Daam] background ingestion dispatch completed", ingestionResult);
 					await mountChip("success", payload);
 				}
 			} catch (error) {

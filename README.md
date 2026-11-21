@@ -46,8 +46,8 @@ sensor remains isolated in `apps/extension/`.
 The Neon/Drizzle schema is isolated under `apps/web/src/db/` so server-only
 database code is not imported into the browser extension package.
 
-1. Copy `apps/web/.env.example` to `apps/web/.env` and set `DATABASE_URL` to a Neon PostgreSQL
-   connection string. Never commit `.env`.
+1. Copy the root `.env.example` to `.env` and set `DATABASE_URL` to a Neon PostgreSQL
+   connection string. Set `WXT_API_URL` for the extension API. Never commit `.env`.
 2. Generate a migration after schema changes:
 
    ```bash
@@ -64,6 +64,21 @@ For quick development-only schema iteration, Drizzle Kit also exposes:
 
 ```bash
 pnpm db:push
+```
+
+Configure the web database and extension API URL before running the two apps:
+
+```bash
+# Repository root .env
+DATABASE_URL=postgresql://...
+WXT_API_URL="http://localhost:3002"
+```
+
+Start the web API, then start the extension:
+
+```bash
+pnpm --filter @daam/web dev
+pnpm dev
 ```
 
 The schema uses integer identity keys and lookup foreign keys so
