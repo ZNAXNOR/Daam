@@ -39,6 +39,43 @@ export interface IngestionResponse {
 	productId: string;
 }
 
+export type ProductVerdictCode =
+	| "tracking_started"
+	| "lowest_seen"
+	| "highest_seen"
+	| "steady"
+	| "true_deal"
+	| "fair_price"
+	| "inflated";
+
+export type ProductVerdictTone = "neutral" | "positive" | "warning" | "negative";
+
+export interface ProductVerdict {
+	code: ProductVerdictCode;
+	label: string;
+	tone: ProductVerdictTone;
+}
+
+export interface ProductIntelligenceStats {
+	currentPrice: number;
+	minPrice: number;
+	maxPrice: number;
+	medianPrice: number;
+	dataPoints: number;
+}
+
+export interface ProductIntelligenceHistoryPoint {
+	timestamp: string;
+	effectivePrice: number;
+	mrp?: number;
+}
+
+export interface ProductIntelligenceResponse {
+	verdict: ProductVerdict;
+	stats: ProductIntelligenceStats;
+	history: ProductIntelligenceHistoryPoint[];
+}
+
 export type ProductValidationCode =
 	| "INVALID_PRODUCT_ID"
 	| "INVALID_DEAL_PRICE"
@@ -57,6 +94,71 @@ export interface ProductValidationResult {
 
 const IMAGE_HASH_PATTERN = /^[0-9a-f]{16}$/i;
 const CURRENCY_PATTERN = /^[A-Z]{3}$/;
+
+const VERDICT_CODES: ProductVerdictCode[] = [
+	"tracking_started",
+	"lowest_seen",
+	"highest_seen",
+	"steady",
+	"true_deal",
+	"fair_price",
+	"inflated",
+];
+const VERDICT_TONES: ProductVerdictTone[] = [
+	"neutral",
+	"positive",
+	"warning",
+	"negative",
+];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
+}
+
+export function isProductIntelligenceResponse(
+	value: unknown,
+): value is ProductIntelligenceResponse {
+	if (!isRecord(value) || !isRecord(value.verdict) || !isRecord(value.stats)) {
+		return false;
+	}
+
+	const { verdict, stats } = value;
+	if (
+		typeof verdict.code !== "string" ||
+		!VERDICT_CODES.includes(verdict.code as ProductVerdictCode) ||
+		typeof verdict.label !== "string" ||
+		typeof verdict.tone !== "string" ||
+		!VERDICT_TONES.includes(verdict.tone as ProductVerdictTone) ||
+		typeof stats.currentPrice !== "number" ||
+		!Number.isFinite(stats.currentPrice) ||
+		typeof stats.minPrice !== "number" ||
+		!Number.isFinite(stats.minPrice) ||
+		typeof stats.maxPrice !== "number" ||
+		!Number.isFinite(stats.maxPrice) ||
+		typeof stats.medianPrice !== "number" ||
+		!Number.isFinite(stats.medianPrice) ||
+		typeof stats.dataPoints !== "number" ||
+		!Number.isInteger(stats.dataPoints) ||
+		!Array.isArray(value.history)
+	) {
+		return false;
+	}
+
+	return value.history.every((point: unknown) => {
+		if (!isRecord(point)) {
+			return false;
+		}
+
+		return (
+			typeof point.timestamp === "string" &&
+			Number.isFinite(Date.parse(point.timestamp)) &&
+			typeof point.effectivePrice === "number" &&
+			Number.isFinite(point.effectivePrice) &&
+			(point.mrp === undefined ||
+				(typeof point.mrp === "number" && Number.isFinite(point.mrp)))
+		);
+	});
+}
 
 export function validateProductPayload(
 	payload: ProductPayload,

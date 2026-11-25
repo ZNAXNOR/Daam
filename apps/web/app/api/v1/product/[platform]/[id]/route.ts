@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { getProductHistory } from "@/src/db/queries";
+import { getProductIntelligence } from "@/src/db/queries";
 
 const CACHE_CONTROL =
 	"public, s-maxage=60, stale-while-revalidate=300";
-const STALE_AFTER_MS = 48 * 60 * 60 * 1000;
 
 interface ProductHistoryRouteContext {
 	params: Promise<{
@@ -19,9 +18,9 @@ export async function GET(
 	const { platform, id } = await context.params;
 
 	try {
-		const product = await getProductHistory(platform, id);
+		const intelligence = await getProductIntelligence(platform, id);
 
-		if (!product) {
+		if (!intelligence) {
 			return NextResponse.json(
 				{ error: "Product not found." },
 				{
@@ -31,18 +30,8 @@ export async function GET(
 			);
 		}
 
-		const latest = product.history[0];
-		const stale =
-			latest?.recordedAt === null || latest?.recordedAt === undefined
-				? true
-				: Date.now() - latest.recordedAt.getTime() > STALE_AFTER_MS;
-
 		return NextResponse.json(
-			{
-				title: product.title,
-				history: product.history,
-				stale,
-			},
+			intelligence,
 			{
 				headers: { "Cache-Control": CACHE_CONTROL },
 			},

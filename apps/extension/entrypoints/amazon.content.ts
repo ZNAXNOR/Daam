@@ -1,5 +1,9 @@
 import "../assets/tailwind.css";
-import type { ProductPayload } from "@daam/contracts";
+import type {
+	ProductIntelligenceResponse,
+	ProductPayload,
+} from "@daam/contracts";
+import { isProductIntelligenceResponse } from "@daam/contracts";
 import { extractAmazonData } from "../src/extractors/amazon";
 import { createAssistChip, type AssistChipView } from "../src/ui/AssistChip";
 import { watchForChanges } from "../src/utils/observer";
@@ -35,7 +39,11 @@ export default defineContentScript({
 		let renderedState: string | null = null;
 		let extractionInProgress = false;
 
-		const mountChip = async (state: "success" | "error", data?: ProductPayload) => {
+		const mountChip = async (
+			state: "success" | "error",
+			data?: ProductPayload,
+			intelligence: ProductIntelligenceResponse | null = null,
+		) => {
 			console.info("[Daam] mount requested", { state, productId: data?.productId });
 			if (chipView && !chipView.root.isConnected) {
 				console.warn("[Daam] previous chip was detached; remounting");
@@ -53,7 +61,7 @@ export default defineContentScript({
 
 			renderedState = nextState;
 			if (chipView) {
-				const nextView = createAssistChip(state, data);
+				const nextView = createAssistChip(state, data, intelligence);
 				chipView.root.replaceWith(nextView.root);
 				chipView = nextView;
 				return;
@@ -81,7 +89,7 @@ export default defineContentScript({
 							host.style.display = "block";
 						}
 						try {
-							chipView = createAssistChip(state, data);
+							chipView = createAssistChip(state, data, intelligence);
 							container.replaceChildren(chipView.root);
 							console.info("[Daam] UI mounted", {
 								hostConnected: Boolean(host?.isConnected),
@@ -107,12 +115,14 @@ export default defineContentScript({
 							const fallback = document.createElement("button");
 							fallback.type = "button";
 							fallback.textContent = state === "success"
-								? `🟢 Daam: ₹${data?.dealPrice.toLocaleString("en-IN") ?? "Price found"}`
+								? `Daam: ${intelligence?.verdict.label ?? "Collecting price history..."}`
 								: "⚠️ Daam: Page unreadable";
 							fallback.style.cssText =
 								"display:block!important;visibility:visible!important;opacity:1!important;" +
 								"padding:8px 16px;border:1px solid #747878;border-radius:999px;" +
-								"background:#e3dfff;color:#1a1c1b;font:14px sans-serif;cursor:pointer;";
+								`background:${intelligence?.verdict.tone === "positive" ? "#dff3e3" : intelligence?.verdict.tone === "negative" ? "#ffdad6" : intelligence?.verdict.tone === "warning" ? "#fff0c2" : "#e8e8e6"};` +
+								`color:${intelligence?.verdict.tone === "positive" ? "#146c2e" : intelligence?.verdict.tone === "negative" ? "#ba1a1a" : intelligence?.verdict.tone === "warning" ? "#704600" : "#444748"};` +
+								"font:14px sans-serif;cursor:pointer;";
 							const fallbackCard = document.createElement("div");
 							fallbackCard.hidden = true;
 							fallbackCard.className = "daam-fallback-card";
@@ -190,7 +200,7 @@ export default defineContentScript({
 				chipUi.mount();
 				if (chipUi.uiContainer.childElementCount === 0) {
 					console.warn("[Daam] WXT mount produced an empty UI container; inserting chip directly");
-					chipView = createAssistChip(state, data);
+					chipView = createAssistChip(state, data, intelligence);
 					chipUi.uiContainer.replaceChildren(chipView.root);
 				}
 				console.info("[Daam] UI mount call completed", {
@@ -237,7 +247,28 @@ export default defineContentScript({
 						payload,
 					});
 					console.info("[Daam] background ingestion dispatch completed", ingestionResult);
-					await mountChip("success", payload);
+					let intelligence: ProductIntelligenceResponse | null = null;
+					try {
+						const result: unknown = await browser.runtime.sendMessage({
+							type: "FETCH_PRODUCT_INTELLIGENCE",
+							platform: payload.platform,
+							productId: payload.productId,
+						});
+						if (isProductIntelligenceResponse(result)) {
+							intelligence = result;
+						} else {
+							console.warn("[Daam] product intelligence is not available yet", {
+								productId: payload.productId,
+								result,
+							});
+						}
+					} catch (error) {
+						console.error("[Daam] product intelligence request failed", {
+							productId: payload.productId,
+							error,
+						});
+					}
+					await mountChip("success", payload, intelligence);
 				}
 			} catch (error) {
 				console.error("[Daam] extraction or rendering failed", error);

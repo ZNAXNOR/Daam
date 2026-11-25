@@ -1,4 +1,5 @@
-import type { ProductPayload } from "@daam/contracts";
+import type { ProductIntelligenceResponse, ProductPayload } from "@daam/contracts";
+import { createPopoverCard } from "./PopoverCard";
 
 export interface AssistChipView {
 	root: HTMLDivElement;
@@ -8,6 +9,7 @@ export interface AssistChipView {
 export function createAssistChip(
 	state: "success" | "error",
 	data?: ProductPayload,
+	intelligence: ProductIntelligenceResponse | null = null,
 ): AssistChipView {
 	const root = document.createElement("div");
 	root.dataset.daamChip = "true";
@@ -55,26 +57,37 @@ export function createAssistChip(
 	`;
 	root.append(styles);
 
-	const chip = document.createElement(
-		customElements.get("md-assist-chip") ? "md-assist-chip" : "button",
-	);
+	const hasMaterialChip = globalThis.customElements?.get("md-assist-chip");
+	const chip = document.createElement(hasMaterialChip ? "md-assist-chip" : "button");
+	const toneStyles = {
+		positive: { background: "#dff3e3", foreground: "#146c2e", outline: "#73a778" },
+		negative: { background: "#ffdad6", foreground: "#ba1a1a", outline: "#ba1a1a" },
+		warning: { background: "#fff0c2", foreground: "#704600", outline: "#a66b00" },
+		neutral: { background: "#e8e8e6", foreground: "#444748", outline: "#747878" },
+	} as const;
+	const tone = intelligence?.verdict.tone ?? "neutral";
+	const colors = toneStyles[tone];
+	chip.style.setProperty("--md-assist-chip-container-color", colors.background);
+	chip.style.setProperty("--md-assist-chip-label-text-color", colors.foreground);
+	chip.style.setProperty("--md-assist-chip-outline-color", colors.outline);
+	chip.style.backgroundColor = colors.background;
+	chip.style.borderColor = colors.outline;
+	chip.style.color = colors.foreground;
 	if (chip instanceof HTMLButtonElement) {
 		chip.type = "button";
 		chip.style.padding = "8px 16px";
 		chip.style.borderRadius = "999px";
-		chip.style.border = "1px solid #747878";
-		chip.style.background = "#e3dfff";
-		chip.style.color = "#1a1c1b";
+		chip.style.border = `1px solid ${colors.outline}`;
 		chip.style.cursor = "pointer";
 	}
 	chip.setAttribute(
 		"label",
 		state === "success"
-			? `🟢 Daam: ₹${data?.dealPrice.toLocaleString("en-IN") ?? "Price found"}`
+			? `Daam: ${intelligence?.verdict.label ?? "Collecting price history..."}`
 			: "⚠️ Daam: Page unreadable (Report Issue)",
 	);
 	if (chip instanceof HTMLButtonElement) {
-		chip.textContent = chip.getAttribute("label");
+		chip.textContent = chip.getAttribute("label") ?? "";
 	}
 	chip.dataset.daamChip = "true";
 	chip.setAttribute("aria-expanded", "false");
@@ -90,8 +103,7 @@ export function createAssistChip(
 		const trendTab = document.createElement("button");
 		trendTab.type = "button";
 		trendTab.textContent = "Price Trend";
-		trendTab.className =
-			"border-b-2 border-primary px-3 py-2 font-semibold text-primary";
+		trendTab.className = "border-b-2 border-primary px-3 py-2 font-semibold text-primary";
 
 		const dataTab = document.createElement("button");
 		dataTab.type = "button";
@@ -100,9 +112,8 @@ export function createAssistChip(
 		tabs.append(trendTab, dataTab);
 
 		const trendContent = document.createElement("div");
-		trendContent.className =
-			"h-32 flex items-center justify-center text-sm text-on-surface-variant";
-		trendContent.textContent = "Graph Placeholder";
+		trendContent.className = "py-3";
+		trendContent.append(createPopoverCard(intelligence, data.dealPrice, data.currency));
 
 		const dataContent = document.createElement("div");
 		dataContent.className = "hidden";
@@ -111,8 +122,7 @@ export function createAssistChip(
 		dataGrid.className = "daam-data-grid mt-2 max-h-48 overflow-y-auto text-xs text-on-surface";
 		for (const [key, value] of Object.entries(data)) {
 			const row = document.createElement("div");
-			row.className =
-				"flex justify-between border-b border-surface-container-high py-1";
+			row.className = "flex justify-between border-b border-surface-container-high py-1";
 
 			const keyElement = document.createElement("span");
 			keyElement.className = "capitalize text-on-surface-variant";
@@ -151,7 +161,8 @@ export function createAssistChip(
 		popover.append(tabs, trendContent, dataContent);
 
 		const activateTab = (active: HTMLButtonElement, inactive: HTMLButtonElement) => {
-			active.className = "border-b-2 border-primary px-3 py-2 text-sm font-semibold text-primary";
+			active.className =
+				"border-b-2 border-primary px-3 py-2 text-sm font-semibold text-primary";
 			inactive.className = "px-3 py-2 text-sm text-on-surface-variant";
 		};
 		trendTab.addEventListener("click", () => {
@@ -179,7 +190,11 @@ export function createAssistChip(
 
 	chip.addEventListener("click", () => {
 		if (state === "error") {
-			window.open("https://github.com/ZNAXNOR/Daam/issues/new", "_blank", "noopener,noreferrer");
+			window.open(
+				"https://github.com/ZNAXNOR/Daam/issues/new",
+				"_blank",
+				"noopener,noreferrer",
+			);
 			return;
 		}
 		toggleCard();

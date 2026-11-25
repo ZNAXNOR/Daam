@@ -66,6 +66,13 @@ For quick development-only schema iteration, Drizzle Kit also exposes:
 pnpm db:push
 ```
 
+Populate the development database with idempotent 90-day histories for three
+Amazon India demo ASINs:
+
+```bash
+pnpm db:seed
+```
+
 Configure the web database and extension API URL before running the two apps:
 
 ```bash

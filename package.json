@@ -1,18 +1,19 @@
 {
-  "name": "daam",
-  "description": "Open-source price intelligence and fake discount detector.",
-  "private": true,
-  "version": "0.0.0",
-  "packageManager": "pnpm@10.12.1",
-  "scripts": {
-    "compile": "pnpm --recursive --if-present compile",
-    "build": "pnpm --filter @daam/extension build && pnpm --filter @daam/web build",
-    "dev": "pnpm --filter @daam/extension dev",
-    "dev:firefox": "pnpm --filter @daam/extension dev:firefox",
-    "db:generate": "pnpm --filter @daam/web db:generate",
-    "db:migrate": "pnpm --filter @daam/web db:migrate",
-    "db:push": "pnpm --filter @daam/web db:push",
-    "zip": "pnpm --filter @daam/extension zip",
-    "zip:firefox": "pnpm --filter @daam/extension zip:firefox"
-  }
+	"name": "daam",
+	"description": "Open-source price intelligence and fake discount detector.",
+	"private": true,
+	"version": "0.0.0",
+	"packageManager": "pnpm@10.12.1",
+	"scripts": {
+		"compile": "pnpm --recursive --if-present compile",
+		"build": "pnpm --filter @daam/extension build && pnpm --filter @daam/web build",
+		"dev": "pnpm --parallel --filter @daam/extension --filter @daam/web dev",
+		"dev:firefox": "pnpm --filter @daam/extension dev:firefox",
+		"db:generate": "pnpm --filter @daam/web db:generate",
+		"db:migrate": "pnpm --filter @daam/web db:migrate",
+		"db:push": "pnpm --filter @daam/web db:push",
+		"db:seed": "pnpm --filter @daam/web db:seed",
+		"zip": "pnpm --filter @daam/extension zip",
+		"zip:firefox": "pnpm --filter @daam/extension zip:firefox"
+	}
 }

@@ -1,4 +1,9 @@
-import { and, desc, eq, gt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte } from "drizzle-orm";
+import type {
+	ProductIntelligenceHistoryPoint,
+	ProductIntelligenceResponse,
+	ProductVerdict,
+} from "@daam/contracts";
 import { db } from "./index";
 import { platforms, priceHistory, products, sellers } from "./schema";
 
@@ -107,13 +112,94 @@ export async function getDailyExportData() {
 		.where(gt(priceHistory.recordedAt, since));
 }
 
-export async function getProductHistory(
+const HISTORY_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+const RECENT_SPIKE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const PRICE_DEVIATION_RATIO = 0.1;
+
+function median(values: number[]): number {
+	const sorted = [...values].sort((a, b) => a - b);
+	const middle = Math.floor(sorted.length / 2);
+
+	return sorted.length % 2 === 0
+		? (sorted[middle - 1] + sorted[middle]) / 2
+		: sorted[middle];
+}
+
+function createVerdict(
+	history: ProductIntelligenceHistoryPoint[],
+	medianPrice: number,
+): ProductVerdict {
+	const current = history[history.length - 1];
+
+	if (history.length === 1) {
+		return { code: "tracking_started", label: "Tracking Started", tone: "neutral" };
+	}
+
+	const elapsedMs =
+		Date.parse(current.timestamp) - Date.parse(history[0].timestamp);
+	if (history.length < 6 && elapsedMs < 7 * 24 * 60 * 60 * 1000) {
+		const minPrice = history.reduce(
+			(minimum, point) => Math.min(minimum, point.effectivePrice),
+			Infinity,
+		);
+		const maxPrice = history.reduce(
+			(maximum, point) => Math.max(maximum, point.effectivePrice),
+			-Infinity,
+		);
+		const isLowest = current.effectivePrice === minPrice;
+		const isHighest = current.effectivePrice === maxPrice;
+
+		if (isLowest && !isHighest) {
+			return { code: "lowest_seen", label: "Lowest Seen", tone: "positive" };
+		}
+		if (isHighest && !isLowest) {
+			return { code: "highest_seen", label: "Highest Seen", tone: "warning" };
+		}
+		return { code: "steady", label: "Steady", tone: "neutral" };
+	}
+
+	const recentCutoff =
+		Date.parse(current.timestamp) - RECENT_SPIKE_WINDOW_MS;
+	const recentHigh = history.reduce(
+		(maximum, point) =>
+			Date.parse(point.timestamp) >= recentCutoff
+				? Math.max(maximum, point.effectivePrice)
+				: maximum,
+		-Infinity,
+	);
+	const previousMrps = history
+		.slice(0, -1)
+		.flatMap((point) => point.mrp === undefined ? [] : [point.mrp]);
+	const previousMedianMrp = previousMrps.length > 0 ? median(previousMrps) : null;
+	const mrpWasBumped =
+		current.mrp !== undefined &&
+		previousMedianMrp !== null &&
+		current.mrp >= previousMedianMrp * (1 + PRICE_DEVIATION_RATIO);
+
+	if (
+		current.effectivePrice >= medianPrice * (1 + PRICE_DEVIATION_RATIO) ||
+		recentHigh >= medianPrice * (1 + PRICE_DEVIATION_RATIO) ||
+		mrpWasBumped
+	) {
+		return { code: "inflated", label: "List Price Inflated", tone: "negative" };
+	}
+
+	if (
+		current.effectivePrice <= medianPrice * (1 - PRICE_DEVIATION_RATIO)
+	) {
+		return { code: "true_deal", label: "True Deal", tone: "positive" };
+	}
+
+	return { code: "fair_price", label: "Fair Price", tone: "neutral" };
+}
+
+export async function getProductIntelligence(
 	platformName: string,
 	productId: string,
-) {
+): Promise<ProductIntelligenceResponse | null> {
+	const since = new Date(Date.now() - HISTORY_WINDOW_MS);
 	const rows = await db
 		.select({
-			title: products.title,
 			historyId: priceHistory.id,
 			dealPrice: priceHistory.dealPrice,
 			mrp: priceHistory.mrp,
@@ -121,25 +207,54 @@ export async function getProductHistory(
 		})
 		.from(products)
 		.innerJoin(platforms, eq(products.platformId, platforms.id))
-		.leftJoin(priceHistory, eq(priceHistory.productId, products.id))
+		.leftJoin(
+			priceHistory,
+			and(
+				eq(priceHistory.productId, products.id),
+				gte(priceHistory.recordedAt, since),
+			),
+		)
 		.where(
 			and(
 				eq(platforms.name, platformName),
 				eq(products.productId, productId),
 			),
 		)
-		.orderBy(desc(priceHistory.recordedAt))
-		.limit(90);
+		.orderBy(asc(priceHistory.recordedAt), asc(priceHistory.id));
 
-	if (rows.length === 0) {
+	const history: ProductIntelligenceHistoryPoint[] = rows.flatMap((row) => {
+		if (
+			row.historyId === null ||
+			row.recordedAt === null ||
+			row.dealPrice === null
+		) {
+			return [];
+		}
+
+		return [{
+			timestamp: row.recordedAt.toISOString(),
+			effectivePrice: row.dealPrice,
+			...(row.mrp === null ? {} : { mrp: row.mrp }),
+		}];
+	});
+
+	if (history.length === 0) {
 		return null;
 	}
 
+	const prices = history.map((point) => point.effectivePrice);
+	const medianPrice = median(prices);
+
 	return {
-		title: rows[0].title,
-		history: rows
-			.filter((row) => row.historyId !== null)
-			.map(({ historyId: _historyId, ...history }) => history),
+		verdict: createVerdict(history, medianPrice),
+		stats: {
+			currentPrice: history[history.length - 1].effectivePrice,
+			minPrice: prices.reduce((minimum, price) => Math.min(minimum, price), Infinity),
+			maxPrice: prices.reduce((maximum, price) => Math.max(maximum, price), -Infinity),
+			medianPrice,
+			dataPoints: history.length,
+		},
+		history,
 	};
 }
 
