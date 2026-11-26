@@ -1,7 +1,9 @@
-import { and, asc, desc, eq, gt, gte } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, sql } from "drizzle-orm";
 import type {
+	FulfillmentType,
 	ProductIntelligenceHistoryPoint,
 	ProductIntelligenceResponse,
+	ProductSignals,
 	ProductVerdict,
 } from "@daam/contracts";
 import { db } from "./index";
@@ -24,10 +26,7 @@ export async function upsertPlatform(name: string): Promise<number> {
 	return platform.id;
 }
 
-export async function upsertSeller(
-	platformSellerId: string,
-	name: string,
-): Promise<number> {
+export async function upsertSeller(platformSellerId: string, name: string): Promise<number> {
 	const [seller] = await db
 		.insert(sellers)
 		.values({ platformSellerId, name })
@@ -48,13 +47,26 @@ export async function upsertProduct(
 	platformId: number,
 	productId: string,
 	title: string,
+	metadata: Pick<ProductSignals, "brand" | "categoryPath" | "imageUrl"> = {},
 ): Promise<number> {
 	const [product] = await db
 		.insert(products)
-		.values({ platformId, productId, title })
+		.values({
+			platformId,
+			productId,
+			title,
+			brand: metadata.brand ?? null,
+			categoryPath: metadata.categoryPath ?? null,
+			imageUrl: metadata.imageUrl ?? null,
+		})
 		.onConflictDoUpdate({
 			target: [products.platformId, products.productId],
-			set: { title },
+			set: {
+				title,
+				brand: metadata.brand ?? sql`${products.brand}`,
+				categoryPath: metadata.categoryPath ?? sql`${products.categoryPath}`,
+				imageUrl: metadata.imageUrl ?? sql`${products.imageUrl}`,
+			},
 		})
 		.returning({ id: products.id });
 
@@ -73,6 +85,18 @@ export async function findLatestPriceHistory(productId: number) {
 			mrp: priceHistory.mrp,
 			inStock: priceHistory.inStock,
 			sellerType: priceHistory.sellerType,
+			buyBoxPrice: priceHistory.buyBoxPrice,
+			listPrice: priceHistory.listPrice,
+			couponDiscount: priceHistory.couponDiscount,
+			shippingCost: priceHistory.shippingCost,
+			isLightningDeal: priceHistory.isLightningDeal,
+			sellerName: priceHistory.sellerName,
+			fulfillmentType: priceHistory.fulfillmentType,
+			newOfferCount: priceHistory.newOfferCount,
+			lowestNewPrice: priceHistory.lowestNewPrice,
+			salesRank: priceHistory.salesRank,
+			rating: priceHistory.rating,
+			reviewCount: priceHistory.reviewCount,
 			recordedAt: priceHistory.recordedAt,
 		})
 		.from(priceHistory)
@@ -89,12 +113,21 @@ export async function updateLatestPriceHistory(
 		dealPrice: number;
 		inStock: boolean;
 		sellerType: "platform" | "third_party" | "unknown";
+		buyBoxPrice: number | null;
+		listPrice: number | null;
+		couponDiscount: number | null;
+		shippingCost: number | null;
+		isLightningDeal: boolean | null;
+		sellerName: string | null;
+		fulfillmentType: FulfillmentType | null;
+		newOfferCount: number | null;
+		lowestNewPrice: number | null;
+		salesRank: number | null;
+		rating: number | null;
+		reviewCount: number | null;
 	},
 ): Promise<void> {
-	await db
-		.update(priceHistory)
-		.set(values)
-		.where(eq(priceHistory.id, id));
+	await db.update(priceHistory).set(values).where(eq(priceHistory.id, id));
 }
 
 export async function getDailyExportData() {
@@ -125,9 +158,7 @@ function median(values: number[]): number {
 	const sorted = [...values].sort((a, b) => a - b);
 	const middle = Math.floor(sorted.length / 2);
 
-	return sorted.length % 2 === 0
-		? (sorted[middle - 1] + sorted[middle]) / 2
-		: sorted[middle];
+	return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
 }
 
 function createVerdict(
@@ -140,8 +171,7 @@ function createVerdict(
 		return { code: "tracking_started", label: "Tracking Started", tone: "neutral" };
 	}
 
-	const elapsedMs =
-		Date.parse(current.timestamp) - Date.parse(history[0].timestamp);
+	const elapsedMs = Date.parse(current.timestamp) - Date.parse(history[0].timestamp);
 	if (history.length < 6 && elapsedMs < 7 * 24 * 60 * 60 * 1000) {
 		const minPrice = history.reduce(
 			(minimum, point) => Math.min(minimum, point.effectivePrice),
@@ -163,8 +193,7 @@ function createVerdict(
 		return { code: "steady", label: "Steady", tone: "neutral" };
 	}
 
-	const recentCutoff =
-		Date.parse(current.timestamp) - RECENT_SPIKE_WINDOW_MS;
+	const recentCutoff = Date.parse(current.timestamp) - RECENT_SPIKE_WINDOW_MS;
 	const recentHigh = history.reduce(
 		(maximum, point) =>
 			Date.parse(point.timestamp) >= recentCutoff
@@ -174,7 +203,7 @@ function createVerdict(
 	);
 	const previousMrps = history
 		.slice(0, -1)
-		.flatMap((point) => point.mrp === undefined ? [] : [point.mrp]);
+		.flatMap((point) => (point.mrp === undefined ? [] : [point.mrp]));
 	const previousMedianMrp = previousMrps.length > 0 ? median(previousMrps) : null;
 	const mrpWasBumped =
 		current.mrp !== undefined &&
@@ -189,9 +218,7 @@ function createVerdict(
 		return { code: "inflated", label: "List Price Inflated", tone: "negative" };
 	}
 
-	if (
-		current.effectivePrice <= medianPrice * (1 - PRICE_DEVIATION_RATIO)
-	) {
+	if (current.effectivePrice <= medianPrice * (1 - PRICE_DEVIATION_RATIO)) {
 		return { code: "true_deal", label: "True Deal", tone: "positive" };
 	}
 
@@ -205,37 +232,38 @@ export async function getProductIntelligence(
 	const since = new Date(Date.now() - HISTORY_WINDOW_MS);
 	const rows = await db
 		.select({
+			brand: products.brand,
+			categoryPath: products.categoryPath,
+			imageUrl: products.imageUrl,
 			historyId: priceHistory.id,
 			dealPrice: priceHistory.dealPrice,
 			mrp: priceHistory.mrp,
 			inStock: priceHistory.inStock,
+			buyBoxPrice: priceHistory.buyBoxPrice,
+			listPrice: priceHistory.listPrice,
+			couponDiscount: priceHistory.couponDiscount,
+			shippingCost: priceHistory.shippingCost,
+			isLightningDeal: priceHistory.isLightningDeal,
+			sellerName: priceHistory.sellerName,
+			fulfillmentType: priceHistory.fulfillmentType,
+			newOfferCount: priceHistory.newOfferCount,
+			lowestNewPrice: priceHistory.lowestNewPrice,
+			salesRank: priceHistory.salesRank,
+			rating: priceHistory.rating,
+			reviewCount: priceHistory.reviewCount,
 			recordedAt: priceHistory.recordedAt,
 		})
 		.from(products)
 		.innerJoin(platforms, eq(products.platformId, platforms.id))
 		.leftJoin(
 			priceHistory,
-			and(
-				eq(priceHistory.productId, products.id),
-				gte(priceHistory.recordedAt, since),
-			),
+			and(eq(priceHistory.productId, products.id), gte(priceHistory.recordedAt, since)),
 		)
-		.where(
-			and(
-				eq(platforms.name, platformName),
-				eq(products.productId, productId),
-			),
-		)
+		.where(and(eq(platforms.name, platformName), eq(products.productId, productId)))
 		.orderBy(asc(priceHistory.recordedAt), asc(priceHistory.id));
 
-	const toHistoryPoint = (
-		row: (typeof rows)[number],
-	): ProductIntelligenceHistoryPoint | null => {
-		if (
-			row.historyId === null ||
-			row.recordedAt === null ||
-			row.dealPrice === null
-		) {
+	const toHistoryPoint = (row: (typeof rows)[number]): ProductIntelligenceHistoryPoint | null => {
+		if (row.historyId === null || row.recordedAt === null || row.dealPrice === null) {
 			return null;
 		}
 
@@ -263,12 +291,29 @@ export async function getProductIntelligence(
 	});
 	const statsHistory = availableHistory.length > 0 ? availableHistory : history;
 	const prices = statsHistory.map((point) => point.effectivePrice);
+	const latestRow = [...rows].reverse().find((row) => row.historyId !== null);
 	const medianPrice = median(prices);
-	const verdict = availableHistory.length > 0
-		? createVerdict(availableHistory, medianPrice)
-		: { code: "tracking_started", label: "Tracking Started", tone: "neutral" } as const;
+	const verdict =
+		availableHistory.length > 0
+			? createVerdict(availableHistory, medianPrice)
+			: ({ code: "tracking_started", label: "Tracking Started", tone: "neutral" } as const);
 
 	return {
+		brand: latestRow?.brand ?? null,
+		categoryPath: latestRow?.categoryPath ?? null,
+		imageUrl: latestRow?.imageUrl ?? null,
+		buyBoxPrice: latestRow?.buyBoxPrice ?? latestRow?.dealPrice ?? null,
+		listPrice: latestRow?.listPrice ?? latestRow?.mrp ?? null,
+		couponDiscount: latestRow?.couponDiscount ?? null,
+		shippingCost: latestRow?.shippingCost ?? null,
+		isLightningDeal: latestRow?.isLightningDeal ?? undefined,
+		sellerName: latestRow?.sellerName ?? null,
+		fulfillmentType: latestRow?.fulfillmentType ?? undefined,
+		newOfferCount: latestRow?.newOfferCount ?? null,
+		lowestNewPrice: latestRow?.lowestNewPrice ?? null,
+		salesRank: latestRow?.salesRank ?? null,
+		rating: latestRow?.rating ?? null,
+		reviewCount: latestRow?.reviewCount ?? null,
 		verdict,
 		stats: {
 			currentPrice: statsHistory[statsHistory.length - 1].effectivePrice,
@@ -288,6 +333,18 @@ export async function insertPriceHistory(values: {
 	mrp: number | null;
 	inStock: boolean;
 	sellerType: "platform" | "third_party" | "unknown";
+	buyBoxPrice: number | null;
+	listPrice: number | null;
+	couponDiscount: number | null;
+	shippingCost: number | null;
+	isLightningDeal: boolean | null;
+	sellerName: string | null;
+	fulfillmentType: FulfillmentType | null;
+	newOfferCount: number | null;
+	lowestNewPrice: number | null;
+	salesRank: number | null;
+	rating: number | null;
+	reviewCount: number | null;
 }): Promise<void> {
 	await db.insert(priceHistory).values(values);
 }

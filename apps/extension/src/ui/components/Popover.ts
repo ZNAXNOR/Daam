@@ -1,4 +1,9 @@
-import type { ProductIntelligenceHistoryPoint, ProductIntelligenceResponse } from "@daam/contracts";
+import type {
+	ProductIntelligenceHistoryPoint,
+	ProductIntelligenceResponse,
+	ProductPayload,
+} from "@daam/contracts";
+import { autoUpdate, computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { el } from "../primitives/dom";
 import { DAAM_TOKENS } from "../primitives/tokens";
 import { createReportButton, type ReportContext } from "./ReportButton";
@@ -21,6 +26,21 @@ const POPOVER_STYLES = `
 	}
 	.daam-popover[hidden] { display: none; }
 	.daam-popover h2 { margin: 0 0 12px; font-size: 14px; }
+	.daam-tabs { display: flex; gap: 16px; margin: -4px 0 14px; border-bottom: 1px solid var(--daam-border); }
+	.daam-tab { padding: 8px 0; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--daam-muted); font: inherit; cursor: pointer; }
+	.daam-tab[aria-selected="true"] { border-bottom-color: var(--daam-positive); color: var(--daam-fg); font-weight: 700; }
+	.daam-data-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 12px; }
+	.daam-segmented { display: inline-flex; padding: 2px; border: 1px solid var(--daam-border); border-radius: 6px; }
+	.daam-segment { padding: 4px 8px; border: 0; border-radius: 4px; background: transparent; color: var(--daam-muted); font: inherit; font-size: 11px; cursor: pointer; }
+	.daam-segment[aria-pressed="true"] { background: #eaf3ed; color: var(--daam-positive); font-weight: 700; }
+	.daam-copy { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border: 1px solid var(--daam-border); border-radius: 6px; background: var(--daam-bg); color: var(--daam-fg); font: inherit; font-size: 11px; cursor: pointer; }
+	.daam-copy:disabled { opacity: .5; cursor: default; }
+	.daam-data-grid { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); border-top: 1px solid var(--daam-border); }
+	.daam-data-row { display: contents; }
+	.daam-data-key, .daam-data-value { min-width: 0; padding: 7px 6px; border-bottom: 1px solid var(--daam-border); font-size: 11px; }
+	.daam-data-key { color: var(--daam-muted); }
+	.daam-data-value { overflow-wrap: anywhere; font-weight: 600; }
+	.daam-raw { max-width: 100%; max-height: 250px; overflow: auto; margin: 0; padding: 10px; border: 1px solid var(--daam-border); border-radius: 6px; background: #f6f8f6; color: var(--daam-fg); font: 11px/1.5 ui-monospace, monospace; white-space: pre; }
 	.daam-muted { color: var(--daam-muted); }
 	.daam-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 	.daam-metric { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
@@ -50,6 +70,70 @@ function formatPrice(value: number, currency: string): string {
 	} catch {
 		return `${currency} ${Math.round(value)}`;
 	}
+}
+
+type InspectorContext = ReportContext & { extractedPayload?: ProductPayload | null };
+
+function extractedPayloadFor(state: ChipState): ProductPayload | null {
+	if (state.status === "tracking" || state.status === "ready") {
+		return state.payload;
+	}
+	const context = state.context as InspectorContext;
+	return context.extractedPayload ?? null;
+}
+
+function formattedPayload(payload: ProductPayload): Array<[string, string]> {
+	const display = (value: string | number | boolean | null | undefined): string => {
+		if (value === null || value === undefined || value === "") {
+			return "—";
+		}
+		return String(value);
+	};
+	const price = (value: number | null | undefined): string =>
+		value === null || value === undefined ? "—" : formatPrice(value, payload.currency);
+	const capturedAt = Number.isFinite(payload.timestamp)
+		? new Date(payload.timestamp).toLocaleString()
+		: "—";
+	return [
+		["ASIN", display(payload.productId)],
+		["Title", display(payload.title)],
+		["Brand", display(payload.brand)],
+		["Category", display(payload.categoryPath?.join(" › "))],
+		["Image URL", display(payload.imageUrl)],
+		["Effective Price", price(payload.dealPrice)],
+		["Buy Box", price(payload.buyBoxPrice ?? payload.dealPrice)],
+		["MRP", price(payload.listPrice ?? payload.mrp)],
+		["Coupon", price(payload.couponDiscount)],
+		["Shipping", price(payload.shippingCost)],
+		["Seller", display(payload.sellerName)],
+		["Fulfillment", display(payload.fulfillmentType)],
+		["Stock", payload.inStock ? "In stock" : "Out of stock"],
+		["Lightning Deal", display(payload.isLightningDeal)],
+		["BSR", display(payload.salesRank)],
+		["Rating", payload.rating == null ? "—" : `${payload.rating} / 5`],
+		["Reviews", display(payload.reviewCount)],
+		["Offers", display(payload.newOfferCount)],
+		["Lowest New Price", price(payload.lowestNewPrice)],
+		["dHash", display(payload.imageHash)],
+		["Captured At", capturedAt],
+	];
+}
+
+function createCheckIcon(): SVGSVGElement {
+	const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+	svg.setAttribute("viewBox", "0 0 16 16");
+	svg.setAttribute("width", "13");
+	svg.setAttribute("height", "13");
+	svg.setAttribute("aria-hidden", "true");
+	const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+	path.setAttribute("d", "m3 8 3 3 7-7");
+	path.setAttribute("fill", "none");
+	path.setAttribute("stroke", "currentColor");
+	path.setAttribute("stroke-width", "2");
+	path.setAttribute("stroke-linecap", "round");
+	path.setAttribute("stroke-linejoin", "round");
+	svg.append(path);
+	return svg;
 }
 
 function createSparkline(history: ProductIntelligenceHistoryPoint[]): SVGSVGElement {
@@ -203,6 +287,10 @@ export class Popover {
 	});
 	private currentState: ChipState;
 	private isOpen = false;
+	private activeView: "overview" | "data" = "overview";
+	private rawMode = false;
+	private stopAutoUpdate: (() => void) | null = null;
+	private positionRequest = 0;
 
 	constructor(
 		private readonly shadowRoot: ShadowRoot,
@@ -223,7 +311,7 @@ export class Popover {
 		this.currentState = state;
 		this.render();
 		if (this.isOpen) {
-			this.position();
+			void this.position();
 		}
 	}
 
@@ -233,14 +321,24 @@ export class Popover {
 		this.onOpenChange(this.isOpen);
 		if (this.isOpen) {
 			this.render();
-			this.position();
+			this.stopAutoUpdate?.();
+			this.stopAutoUpdate = autoUpdate(this.anchor, this.element, () => {
+				void this.position();
+			});
+			void this.position();
 			document.addEventListener("pointerdown", this.onOutsideClick, true);
 		} else {
+			this.stopAutoUpdate?.();
+			this.stopAutoUpdate = null;
+			this.positionRequest += 1;
 			document.removeEventListener("pointerdown", this.onOutsideClick, true);
 		}
 	}
 
 	destroy(): void {
+		this.stopAutoUpdate?.();
+		this.stopAutoUpdate = null;
+		this.positionRequest += 1;
 		document.removeEventListener("keydown", this.onKeyDown);
 		document.removeEventListener("pointerdown", this.onOutsideClick, true);
 	}
@@ -257,22 +355,52 @@ export class Popover {
 		}
 	};
 
-	private position(): void {
-		const anchorRect = this.anchor.getBoundingClientRect();
-		const popoverRect = this.element.getBoundingClientRect();
-		const width = popoverRect.width || 320;
-		const height = popoverRect.height || 180;
-		const left = Math.max(8, Math.min(anchorRect.left, window.innerWidth - width - 8));
-		const below = anchorRect.bottom + 8;
-		const top =
-			below + height > window.innerHeight - 8
-				? Math.max(8, anchorRect.top - height - 8)
-				: below;
-		this.element.style.left = `${left}px`;
-		this.element.style.top = `${top}px`;
+	private async position(): Promise<void> {
+		const request = ++this.positionRequest;
+		let result: Awaited<ReturnType<typeof computePosition>>;
+		try {
+			result = await computePosition(this.anchor, this.element, {
+				strategy: "fixed",
+				placement: "bottom-start",
+				middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
+			});
+		} catch {
+			return;
+		}
+		if (!this.isOpen || request !== this.positionRequest) {
+			return;
+		}
+		this.element.style.left = `${result.x}px`;
+		this.element.style.top = `${result.y}px`;
 	}
 
 	private render(): void {
+		const tabs = el("div", { className: "daam-tabs", role: "tablist" });
+		for (const [view, label] of [
+			["overview", "Overview"],
+			["data", "Data"],
+		] as const) {
+			tabs.append(
+				el("button", {
+					className: "daam-tab",
+					type: "button",
+					role: "tab",
+					"aria-selected": String(this.activeView === view),
+					textContent: label,
+					onClick: () => {
+						this.activeView = view;
+						this.render();
+					},
+				}),
+			);
+		}
+		this.element.replaceChildren(
+			tabs,
+			this.activeView === "overview" ? this.renderOverview() : this.renderData(),
+		);
+	}
+
+	private renderOverview(): HTMLElement {
 		let view: HTMLElement;
 		if (this.currentState.status === "ready") {
 			view = renderHistoryView(
@@ -285,6 +413,86 @@ export class Popover {
 		} else {
 			view = renderEmptyView(this.currentState);
 		}
-		this.element.replaceChildren(view);
+		return view;
+	}
+
+	private renderData(): HTMLElement {
+		const payload = extractedPayloadFor(this.currentState);
+		const formattedButton = el("button", {
+			className: "daam-segment",
+			type: "button",
+			"aria-pressed": String(!this.rawMode),
+			textContent: "Formatted",
+			onClick: () => {
+				this.rawMode = false;
+				this.render();
+			},
+		});
+		const rawButton = el("button", {
+			className: "daam-segment",
+			type: "button",
+			"aria-pressed": String(this.rawMode),
+			textContent: "Raw",
+			onClick: () => {
+				this.rawMode = true;
+				this.render();
+			},
+		});
+		const segmented = el(
+			"div",
+			{ className: "daam-segmented", role: "group", "aria-label": "Data format" },
+			formattedButton,
+			rawButton,
+		);
+		const copyButton = el("button", {
+			className: "daam-copy",
+			type: "button",
+			textContent: "Copy",
+		});
+		copyButton.disabled = payload === null;
+		copyButton.addEventListener("click", async () => {
+			if (!payload) {
+				return;
+			}
+			try {
+				await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+				copyButton.replaceChildren(createCheckIcon(), document.createTextNode("Copied"));
+				setTimeout(() => {
+					if (copyButton.isConnected) {
+						copyButton.textContent = "Copy";
+					}
+				}, 1_500);
+			} catch {
+				copyButton.textContent = "Copy unavailable";
+			}
+		});
+		const toolbar = el("div", { className: "daam-data-toolbar" }, segmented, copyButton);
+
+		let dataView: HTMLElement;
+		if (!payload) {
+			dataView = el("p", {
+				className: "daam-muted",
+				textContent: "No extracted product data is available yet.",
+			});
+		} else if (this.rawMode) {
+			dataView = el("pre", {
+				className: "daam-raw",
+				textContent: JSON.stringify(payload, null, 2),
+			});
+		} else {
+			const grid = el("div", { className: "daam-data-grid" });
+			for (const [label, value] of formattedPayload(payload)) {
+				grid.append(
+					el(
+						"div",
+						{ className: "daam-data-row" },
+						el("div", { className: "daam-data-key", textContent: label }),
+						el("div", { className: "daam-data-value", textContent: value }),
+					),
+				);
+			}
+			dataView = grid;
+		}
+		return el("section", null, toolbar, dataView);
 	}
 }

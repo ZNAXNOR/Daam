@@ -24,16 +24,30 @@ export default defineContentScript({
 		let selectors: Awaited<ReturnType<typeof loadSelectors>>["amazon_in"] | null = null;
 		let mountFailureLogged = false;
 
-		const makeContext = (productId: string | null): ChipContext => ({
+		const makeContext = (
+			productId: string | null,
+			extractedPayload: ProductPayload | null = null,
+		): ChipContext & { extractedPayload: ProductPayload | null } => ({
 			platform: "amazon_in",
 			productId,
+			extractedPayload,
 			pageUrl: location.href,
 			errorCode: "UNKNOWN",
 			selectorVersion: SELECTOR_VERSION,
 		});
 		const setState = (state: ChipState) => chip?.setState(state);
-		const setError = (productId: string | null, errorCode: string, reason: string) => {
-			setState({ status: "error", context: makeContext(productId), errorCode, reason });
+		const setError = (
+			productId: string | null,
+			errorCode: string,
+			reason: string,
+			payload: ProductPayload | null = null,
+		) => {
+			setState({
+				status: "error",
+				context: makeContext(productId, payload),
+				errorCode,
+				reason,
+			});
 		};
 
 		const findAnchor = (): Element | null => {
@@ -134,7 +148,13 @@ export default defineContentScript({
 			lastFingerprint = fingerprint;
 			const productId =
 				inspection.status === "ready" ? inspection.payload.productId : inspection.productId;
-			setState({ status: "loading", context: makeContext(productId) });
+			setState({
+				status: "loading",
+				context: makeContext(
+					productId,
+					inspection.status === "ready" ? inspection.payload : null,
+				),
+			});
 
 			if (inspection.status === "unavailable") {
 				setState({
@@ -163,7 +183,7 @@ export default defineContentScript({
 						isRecord(ingestion) && typeof ingestion.reason === "string"
 							? ingestion.reason
 							: "The product data could not be sent to Daam.";
-					setError(payload.productId, "INGEST_FAILED", reason);
+					setError(payload.productId, "INGEST_FAILED", reason, payload);
 					return;
 				}
 
@@ -184,14 +204,14 @@ export default defineContentScript({
 					if (validPoints.length >= 2) {
 						setState({
 							status: "ready",
-							context: makeContext(payload.productId),
+							context: makeContext(payload.productId, payload),
 							payload,
 							intelligence: result,
 						});
 					} else {
 						setState({
 							status: "tracking",
-							context: makeContext(payload.productId),
+							context: makeContext(payload.productId, payload),
 							payload,
 						});
 					}
@@ -200,7 +220,7 @@ export default defineContentScript({
 				if (result === null) {
 					setState({
 						status: "tracking",
-						context: makeContext(payload.productId),
+						context: makeContext(payload.productId, payload),
 						payload,
 					});
 					return;
@@ -213,13 +233,14 @@ export default defineContentScript({
 					isRecord(result) && typeof result.errorCode === "string"
 						? result.errorCode
 						: "PRODUCT_FETCH_FAILED";
-				setError(payload.productId, errorCode, reason);
+				setError(payload.productId, errorCode, reason, payload);
 			} catch {
 				if (activeRequestId === requestId) {
 					setError(
 						payload.productId,
 						"EXTENSION_CONTEXT_INVALIDATED",
 						"Daam could not complete the request. Reload the page and retry.",
+						payload,
 					);
 				}
 			}

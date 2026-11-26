@@ -53,6 +53,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
 }
 
+function isOptionalNullableNumber(value: Record<string, unknown>, key: string): boolean {
+	const field = value[key];
+	return (
+		field === undefined ||
+		field === null ||
+		(typeof field === "number" && Number.isFinite(field))
+	);
+}
+
+function isOptionalNullableString(value: Record<string, unknown>, key: string): boolean {
+	const field = value[key];
+	return field === undefined || field === null || typeof field === "string";
+}
+
 function isProductPayload(value: unknown): value is ProductPayload {
 	if (!isRecord(value)) {
 		return false;
@@ -74,6 +88,26 @@ function isProductPayload(value: unknown): value is ProductPayload {
 		(value.sellerName === undefined ||
 			typeof value.sellerName === "string" ||
 			value.sellerName === null) &&
+		isOptionalNullableString(value, "brand") &&
+		isOptionalNullableString(value, "imageUrl") &&
+		(value.categoryPath === undefined ||
+			value.categoryPath === null ||
+			(Array.isArray(value.categoryPath) &&
+				value.categoryPath.every((part) => typeof part === "string"))) &&
+		[
+			"buyBoxPrice",
+			"listPrice",
+			"couponDiscount",
+			"shippingCost",
+			"newOfferCount",
+			"lowestNewPrice",
+			"salesRank",
+			"rating",
+			"reviewCount",
+		].every((key) => isOptionalNullableNumber(value, key)) &&
+		(value.isLightningDeal === undefined || typeof value.isLightningDeal === "boolean") &&
+		(value.fulfillmentType === undefined ||
+			["amazon", "fba", "fbm", "unknown"].includes(String(value.fulfillmentType))) &&
 		(value.sellerType === undefined ||
 			value.sellerType === "platform" ||
 			value.sellerType === "third_party" ||
@@ -130,16 +164,51 @@ export async function POST(request: Request): Promise<Response> {
 	try {
 		const platformId = await upsertPlatform(payload.platform);
 		const sellerId = await resolveSeller(payload.sellerId, payload.sellerName);
-		const productId = await upsertProduct(platformId, payload.productId, payload.title);
+		const productId = await upsertProduct(platformId, payload.productId, payload.title, {
+			brand: payload.brand,
+			categoryPath: payload.categoryPath,
+			imageUrl: payload.imageUrl,
+		});
 		const latest = await findLatestPriceHistory(productId);
-		const mrp = payload.mrp ?? null;
+		const mrp = payload.mrp ?? payload.listPrice ?? null;
+		const signals = {
+			buyBoxPrice: payload.buyBoxPrice ?? null,
+			listPrice: payload.listPrice ?? payload.mrp ?? null,
+			couponDiscount: payload.couponDiscount ?? null,
+			shippingCost: payload.shippingCost ?? null,
+			isLightningDeal: payload.isLightningDeal ?? null,
+			sellerName: payload.sellerName ?? null,
+			fulfillmentType: payload.fulfillmentType ?? null,
+			newOfferCount: payload.newOfferCount ?? null,
+			lowestNewPrice: payload.lowestNewPrice ?? null,
+			salesRank: payload.salesRank ?? null,
+			rating: payload.rating ?? null,
+			reviewCount: payload.reviewCount ?? null,
+		};
+		const signalsMatch =
+			latest &&
+			(signals.buyBoxPrice === null || latest.buyBoxPrice === signals.buyBoxPrice) &&
+			(signals.listPrice === null || latest.listPrice === signals.listPrice) &&
+			(signals.couponDiscount === null || latest.couponDiscount === signals.couponDiscount) &&
+			(signals.shippingCost === null || latest.shippingCost === signals.shippingCost) &&
+			(signals.isLightningDeal === null ||
+				latest.isLightningDeal === signals.isLightningDeal) &&
+			(signals.sellerName === null || latest.sellerName === signals.sellerName) &&
+			(signals.fulfillmentType === null ||
+				latest.fulfillmentType === signals.fulfillmentType) &&
+			(signals.newOfferCount === null || latest.newOfferCount === signals.newOfferCount) &&
+			(signals.lowestNewPrice === null || latest.lowestNewPrice === signals.lowestNewPrice) &&
+			(signals.salesRank === null || latest.salesRank === signals.salesRank) &&
+			(signals.rating === null || latest.rating === signals.rating) &&
+			(signals.reviewCount === null || latest.reviewCount === signals.reviewCount);
 
 		if (
 			latest &&
 			latest.dealPrice === payload.dealPrice &&
 			latest.mrp === mrp &&
 			latest.inStock === payload.inStock &&
-			latest.sellerType === (payload.sellerType ?? "unknown")
+			latest.sellerType === (payload.sellerType ?? "unknown") &&
+			signalsMatch
 		) {
 			return response(payload.productId, "SKIPPED_DEDUPLICATED");
 		}
@@ -151,12 +220,25 @@ export async function POST(request: Request): Promise<Response> {
 				if (
 					payload.dealPrice < latest.dealPrice ||
 					payload.inStock !== latest.inStock ||
-					(payload.sellerType ?? "unknown") !== latest.sellerType
+					(payload.sellerType ?? "unknown") !== latest.sellerType ||
+					!signalsMatch
 				) {
 					await updateLatestPriceHistory(latest.id, {
 						dealPrice: Math.min(payload.dealPrice, latest.dealPrice),
 						inStock: payload.inStock,
 						sellerType: payload.sellerType ?? "unknown",
+						buyBoxPrice: signals.buyBoxPrice ?? latest.buyBoxPrice,
+						listPrice: signals.listPrice ?? latest.listPrice,
+						couponDiscount: signals.couponDiscount ?? latest.couponDiscount,
+						shippingCost: signals.shippingCost ?? latest.shippingCost,
+						isLightningDeal: signals.isLightningDeal ?? latest.isLightningDeal,
+						sellerName: signals.sellerName ?? latest.sellerName,
+						fulfillmentType: signals.fulfillmentType ?? latest.fulfillmentType,
+						newOfferCount: signals.newOfferCount ?? latest.newOfferCount,
+						lowestNewPrice: signals.lowestNewPrice ?? latest.lowestNewPrice,
+						salesRank: signals.salesRank ?? latest.salesRank,
+						rating: signals.rating ?? latest.rating,
+						reviewCount: signals.reviewCount ?? latest.reviewCount,
 					});
 				}
 
@@ -176,6 +258,7 @@ export async function POST(request: Request): Promise<Response> {
 			mrp,
 			inStock: payload.inStock,
 			sellerType: payload.sellerType ?? "unknown",
+			...signals,
 		});
 
 		return response(payload.productId, "INSERTED_PRICE_CHANGE");

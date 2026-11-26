@@ -12,28 +12,43 @@ export type StorePlatform =
 
 export type ExtractionMethod = "ld_json" | "main_state" | "dom_selector";
 export type SellerType = "platform" | "third_party" | "unknown";
+export type FulfillmentType = "amazon" | "fba" | "fbm" | "unknown";
 
-export interface ProductPayload {
+export interface ProductSignals {
+	brand?: string | null;
+	categoryPath?: string[] | null;
+	imageUrl?: string | null;
+	buyBoxPrice?: number | null;
+	listPrice?: number | null;
+	couponDiscount?: number | null;
+	shippingCost?: number | null;
+	isLightningDeal?: boolean;
+	sellerName?: string | null;
+	fulfillmentType?: FulfillmentType;
+	newOfferCount?: number | null;
+	lowestNewPrice?: number | null;
+	salesRank?: number | null;
+	rating?: number | null;
+	reviewCount?: number | null;
+}
+
+export interface ProductPayload extends ProductSignals {
 	platform: StorePlatform;
 	productId: string;
 	title: string;
 	dealPrice: number;
 	mrp?: number | null;
 	currency: string;
-	couponDiscount?: number;
+	couponDiscount?: number | null;
 	inStock: boolean;
 	sellerType?: SellerType;
-	sellerName?: string | null;
 	sellerId?: string | null;
 	imageHash?: string;
 	extractionMethod: ExtractionMethod;
 	timestamp: number;
 }
 
-export type IngestionAction =
-	| "INSERTED_PRICE_CHANGE"
-	| "SKIPPED_DEDUPLICATED"
-	| "REJECTED_ANOMALY";
+export type IngestionAction = "INSERTED_PRICE_CHANGE" | "SKIPPED_DEDUPLICATED" | "REJECTED_ANOMALY";
 
 export interface IngestionResponse {
 	success: boolean;
@@ -72,7 +87,7 @@ export interface ProductIntelligenceHistoryPoint {
 	mrp?: number;
 }
 
-export interface ProductIntelligenceResponse {
+export interface ProductIntelligenceResponse extends ProductSignals {
 	verdict: ProductVerdict;
 	stats: ProductIntelligenceStats;
 	history: ProductIntelligenceHistoryPoint[];
@@ -87,6 +102,7 @@ export type ProductValidationCode =
 	| "COUPON_EXCEEDS_DEAL_PRICE"
 	| "INVALID_CURRENCY"
 	| "INVALID_SELLER_TYPE"
+	| "INVALID_PRODUCT_SIGNAL"
 	| "INVALID_IMAGE_HASH"
 	| "INVALID_TIMESTAMP";
 
@@ -107,12 +123,7 @@ const VERDICT_CODES: ProductVerdictCode[] = [
 	"fair_price",
 	"inflated",
 ];
-const VERDICT_TONES: ProductVerdictTone[] = [
-	"neutral",
-	"positive",
-	"warning",
-	"negative",
-];
+const VERDICT_TONES: ProductVerdictTone[] = ["neutral", "positive", "warning", "negative"];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
@@ -126,6 +137,50 @@ export function isProductIntelligenceResponse(
 	}
 
 	const { verdict, stats } = value;
+	const optionalNullableNumbers = [
+		"buyBoxPrice",
+		"listPrice",
+		"couponDiscount",
+		"shippingCost",
+		"newOfferCount",
+		"lowestNewPrice",
+		"salesRank",
+		"rating",
+		"reviewCount",
+	] as const;
+	const optionalNullableStrings = ["brand", "imageUrl", "sellerName"] as const;
+	if (
+		optionalNullableNumbers.some(
+			(key) =>
+				key in value &&
+				value[key] !== undefined &&
+				value[key] !== null &&
+				(typeof value[key] !== "number" || !Number.isFinite(value[key])),
+		) ||
+		optionalNullableStrings.some(
+			(key) =>
+				key in value &&
+				value[key] !== undefined &&
+				value[key] !== null &&
+				typeof value[key] !== "string",
+		) ||
+		("categoryPath" in value &&
+			value.categoryPath !== undefined &&
+			value.categoryPath !== null &&
+			(!Array.isArray(value.categoryPath) ||
+				!value.categoryPath.every((part) => typeof part === "string"))) ||
+		("isLightningDeal" in value &&
+			value.isLightningDeal !== undefined &&
+			typeof value.isLightningDeal !== "boolean") ||
+		("fulfillmentType" in value &&
+			value.fulfillmentType !== undefined &&
+			!(["amazon", "fba", "fbm", "unknown"] as const).includes(
+				value.fulfillmentType as FulfillmentType,
+			))
+	) {
+		return false;
+	}
+
 	if (
 		typeof verdict.code !== "string" ||
 		!VERDICT_CODES.includes(verdict.code as ProductVerdictCode) ||
@@ -163,9 +218,7 @@ export function isProductIntelligenceResponse(
 	});
 }
 
-export function validateProductPayload(
-	payload: ProductPayload,
-): ProductValidationResult {
+export function validateProductPayload(payload: ProductPayload): ProductValidationResult {
 	const errors: ProductValidationCode[] = [];
 
 	if (!payload.productId.trim()) {
@@ -186,11 +239,13 @@ export function validateProductPayload(
 
 	if (
 		payload.couponDiscount !== undefined &&
+		payload.couponDiscount !== null &&
 		(!Number.isFinite(payload.couponDiscount) || payload.couponDiscount < 0)
 	) {
 		errors.push("INVALID_COUPON");
 	} else if (
 		payload.couponDiscount !== undefined &&
+		payload.couponDiscount !== null &&
 		payload.couponDiscount > payload.dealPrice
 	) {
 		errors.push("COUPON_EXCEEDS_DEAL_PRICE");
@@ -205,6 +260,53 @@ export function validateProductPayload(
 		!["platform", "third_party", "unknown"].includes(payload.sellerType)
 	) {
 		errors.push("INVALID_SELLER_TYPE");
+	}
+
+	if (
+		payload.fulfillmentType !== undefined &&
+		!(["amazon", "fba", "fbm", "unknown"] as const).includes(payload.fulfillmentType)
+	) {
+		errors.push("INVALID_SELLER_TYPE");
+	}
+
+	const nonNegativeSignalValues = [
+		payload.buyBoxPrice,
+		payload.listPrice,
+		payload.shippingCost,
+		payload.newOfferCount,
+		payload.lowestNewPrice,
+		payload.salesRank,
+		payload.rating,
+		payload.reviewCount,
+	];
+	if (
+		nonNegativeSignalValues.some(
+			(value) =>
+				value !== undefined && value !== null && (!Number.isFinite(value) || value < 0),
+		)
+	) {
+		errors.push("INVALID_PRODUCT_SIGNAL");
+	}
+	if (
+		payload.categoryPath !== undefined &&
+		payload.categoryPath !== null &&
+		!payload.categoryPath.every((part) => typeof part === "string")
+	) {
+		errors.push("INVALID_PRODUCT_SIGNAL");
+	}
+	if (
+		(payload.brand !== undefined &&
+			payload.brand !== null &&
+			typeof payload.brand !== "string") ||
+		(payload.imageUrl !== undefined &&
+			payload.imageUrl !== null &&
+			typeof payload.imageUrl !== "string") ||
+		(payload.sellerName !== undefined &&
+			payload.sellerName !== null &&
+			typeof payload.sellerName !== "string") ||
+		(payload.isLightningDeal !== undefined && typeof payload.isLightningDeal !== "boolean")
+	) {
+		errors.push("INVALID_PRODUCT_SIGNAL");
 	}
 
 	if (payload.imageHash !== undefined && !IMAGE_HASH_PATTERN.test(payload.imageHash)) {

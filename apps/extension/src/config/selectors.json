@@ -1,43 +1,46 @@
 {
-  "amazon_in": {
-    "asin": [
-      "input#ASIN",
-      "input[name='ASIN']",
-      "[data-asin]"
-    ],
-    "title": [
-      "#productTitle",
-      "#title"
-    ],
-    "dealPrice": [
-      "input[name='items[0.base][customerVisiblePrice][amount]']",
-      "#corePriceDisplay_desktop_feature_div .a-price .a-offscreen",
-      "#apex_desktop .a-price .a-offscreen",
-      "#priceblock_dealprice",
-      "#priceblock_ourprice"
-    ],
-    "mrp": [
-      ".basisPrice .a-offscreen",
-      ".a-price.a-text-price .a-offscreen",
-      "#listPrice"
-    ],
-    "merchantId": [
-      "input#merchantID",
-      "input[name='merchantID']",
-      "[data-merchant-id]"
-    ],
-    "sellerName": [
-      "#sellerProfileTriggerId",
-      "#bylineInfo"
-    ],
-    "sellerContext": [
-      "#merchant-info",
-      "#shipsFromSoldBy_feature_div",
-      "#fulfillerInfoFeature_feature_div"
-    ],
-    "availability": [
-      "#availability",
-      "#outOfStock"
-    ]
-  }
+	"amazon_in": {
+		"asin": ["input#ASIN", "input[name='ASIN']", "[data-asin]"],
+		"title": ["#productTitle", "#title"],
+		"dealPrice": [
+			"input[name='items[0.base][customerVisiblePrice][amount]']",
+			"#corePriceDisplay_desktop_feature_div .a-price .a-offscreen",
+			"#apex_desktop .a-price .a-offscreen",
+			"#priceblock_dealprice",
+			"#priceblock_ourprice"
+		],
+		"buyBoxPrice": [
+			"#corePriceDisplay_desktop_feature_div .a-price .a-offscreen",
+			"#apex_desktop .a-price .a-offscreen",
+			"input[name='items[0.base][customerVisiblePrice][amount]']"
+		],
+		"shippingCost": ["#mir-layout-DELIVERY_BLOCK", "#deliveryBlockMessage"],
+		"mrp": [".basisPrice .a-offscreen", ".a-price.a-text-price .a-offscreen", "#listPrice"],
+		"couponDiscount": ["#couponBadgeRegularVpc", "#couponTextpctch13", ".couponBadge"],
+		"dealBadge": ["#dealBadge_feature_div", "#dealBadge_feature_div .a-badge-text"],
+		"merchantId": ["input#merchantID", "input[name='merchantID']", "[data-merchant-id]"],
+		"sellerName": ["#sellerProfileTriggerId", "#bylineInfo"],
+		"sellerContext": [
+			"#merchant-info",
+			"#shipsFromSoldBy_feature_div",
+			"#fulfillerInfoFeature_feature_div"
+		],
+		"fulfillment": [
+			"#shipsFromSoldBy_feature_div",
+			"#fulfillerInfoFeature_feature_div",
+			"#merchant-info"
+		],
+		"availability": ["#availability", "#outOfStock"],
+		"salesRank": [
+			"#productDetails_detailBullets_sections1",
+			"#detailBulletsWrapper_feature_div"
+		],
+		"rating": ["#acrPopover", "#acrPopover .a-icon-alt"],
+		"reviewCount": ["#acrCustomerReviewText"],
+		"offerCount": ["#olpLinkWidget_feature_div", "#aod-offer-count"],
+		"lowestNewPrice": ["#olpLinkWidget_feature_div .a-color-price", "#aod-offer-price"],
+		"brand": ["#bylineInfo"],
+		"categoryPath": ["#wayfinding-breadcrumbs_feature_div"],
+		"imageUrl": ["#landingImage", "#imgTagWrapperId img"]
+	}
 }

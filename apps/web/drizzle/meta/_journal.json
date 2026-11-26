@@ -15,6 +15,13 @@
       "when": 1795663241085,
       "tag": "0001_secret_lily_hollister",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795668991252,
+      "tag": "0002_flippant_silk_fever",
+      "breakpoints": true
     }
   ]
 }

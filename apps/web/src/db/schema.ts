@@ -3,16 +3,13 @@ import {
 	integer,
 	pgEnum,
 	pgTable,
+	real,
 	text,
 	timestamp,
 	uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-export const sellerTypeEnum = pgEnum("seller_type", [
-	"platform",
-	"third_party",
-	"unknown",
-]);
+export const sellerTypeEnum = pgEnum("seller_type", ["platform", "third_party", "unknown"]);
 
 export const platforms = pgTable("platforms", {
 	id: integer().primaryKey().generatedAlwaysAsIdentity(),
@@ -37,13 +34,11 @@ export const products = pgTable(
 			}),
 		productId: text("product_id").notNull(),
 		title: text().notNull(),
+		brand: text(),
+		categoryPath: text("category_path").array(),
+		imageUrl: text("image_url"),
 	},
-	(table) => [
-		uniqueIndex("products_platform_product_idx").on(
-			table.platformId,
-			table.productId,
-		),
-	],
+	(table) => [uniqueIndex("products_platform_product_idx").on(table.platformId, table.productId)],
 );
 
 export const priceHistory = pgTable("price_history", {
@@ -64,6 +59,20 @@ export const priceHistory = pgTable("price_history", {
 	mrp: integer(),
 	inStock: boolean("in_stock").notNull().default(true),
 	sellerType: sellerTypeEnum("seller_type").notNull().default("unknown"),
+	buyBoxPrice: integer("buy_box_price"),
+	listPrice: integer("list_price"),
+	couponDiscount: integer("coupon_discount"),
+	shippingCost: integer("shipping_cost"),
+	isLightningDeal: boolean("is_lightning_deal"),
+	sellerName: text("seller_name"),
+	fulfillmentType: text("fulfillment_type", {
+		enum: ["amazon", "fba", "fbm", "unknown"],
+	}),
+	newOfferCount: integer("new_offer_count"),
+	lowestNewPrice: integer("lowest_new_price"),
+	salesRank: integer("sales_rank"),
+	rating: real(),
+	reviewCount: integer("review_count"),
 	recordedAt: timestamp("recorded_at", {
 		withTimezone: true,
 		mode: "date",
