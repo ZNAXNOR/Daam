@@ -1,5 +1,6 @@
 import type { ProductIntelligenceResponse, ProductPayload, StorePlatform } from "@daam/contracts";
 import { isProductIntelligenceResponse } from "@daam/contracts";
+import { logger } from "../src/logger";
 
 interface ProductMessage {
 	type: "DAAM_PRODUCT_EXTRACTED";
@@ -10,12 +11,21 @@ interface FetchProductIntelligenceMessage {
 	type: "FETCH_PRODUCT_INTELLIGENCE";
 	platform: StorePlatform;
 	productId: string;
+	requestId: string;
 }
 
-type DaamRuntimeMessage = ProductMessage | FetchProductIntelligenceMessage;
+interface CancelProductIntelligenceMessage {
+	type: "CANCEL_PRODUCT_INTELLIGENCE";
+	requestId: string;
+}
+
+type DaamRuntimeMessage =
+	| ProductMessage
+	| FetchProductIntelligenceMessage
+	| CancelProductIntelligenceMessage;
 
 const DEBOUNCE_MS = 5 * 60 * 1000;
-const REQUEST_TIMEOUT_MS = 8_000;
+const REQUEST_TIMEOUT_MS = 5_000;
 const REQUEST_ATTEMPTS = 3;
 const RETRY_ALARM = "daam-ingestion-retry";
 const PENDING_INGESTION_PREFIX = "daam:pending-ingestion:";
@@ -37,6 +47,7 @@ interface PendingIngestion {
 }
 
 const inFlightIngestions = new Map<string, Promise<unknown>>();
+const intelligenceRequests = new Map<string, AbortController>();
 let pendingFlush: Promise<void> | null = null;
 
 function delay(milliseconds: number): Promise<void> {
@@ -49,32 +60,30 @@ function isRetryableStatus(status: number): boolean {
 
 async function fetchWithTimeout(endpoint: string, init?: RequestInit): Promise<Response> {
 	const controller = new AbortController();
+	const parentSignal = init?.signal;
+	const abortFromParent = () => controller.abort();
+	if (parentSignal?.aborted) {
+		controller.abort();
+	} else {
+		parentSignal?.addEventListener("abort", abortFromParent, { once: true });
+	}
 	const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 	try {
-		return await fetch(endpoint, { ...init, signal: controller.signal });
+		const response = await fetch(endpoint, {
+			...init,
+			signal: controller.signal,
+			cache: "no-store",
+		});
+		const body = await response.arrayBuffer();
+		return new Response(body, {
+			status: response.status,
+			statusText: response.statusText,
+			headers: response.headers,
+		});
 	} finally {
 		clearTimeout(timeout);
+		parentSignal?.removeEventListener("abort", abortFromParent);
 	}
-}
-
-async function fetchWithRetry(endpoint: string, init?: RequestInit): Promise<Response> {
-	for (let attempt = 0; attempt < REQUEST_ATTEMPTS; attempt += 1) {
-		try {
-			const response = await fetchWithTimeout(endpoint, init);
-			if (!isRetryableStatus(response.status) || attempt === REQUEST_ATTEMPTS - 1) {
-				return response;
-			}
-			if (response.body) {
-				await response.body.cancel().catch(() => undefined);
-			}
-		} catch (error) {
-			if (attempt === REQUEST_ATTEMPTS - 1) {
-				throw error;
-			}
-		}
-		await delay(400 * 2 ** attempt);
-	}
-	throw new Error("Request retry limit reached");
 }
 
 function pendingKey(payload: ProductPayload): string {
@@ -95,48 +104,59 @@ async function removePendingIfCurrent(key: string, item: PendingIngestion): Prom
 	}
 }
 
-async function deferIngestion(key: string, item: PendingIngestion): Promise<void> {
+async function deferIngestion(key: string, item: PendingIngestion): Promise<boolean> {
 	const stored = await browser.storage.local.get(key);
 	const current = stored[key] as PendingIngestion | undefined;
-	const latest = current ?? item;
-	const attempts = latest.queuedAt === item.queuedAt ? latest.attempts + 1 : latest.attempts;
+	if (current && current.queuedAt !== item.queuedAt) {
+		return current.attempts < REQUEST_ATTEMPTS;
+	}
+
+	const attempts = item.attempts + 1;
 	const retryDelay = Math.min(
 		30_000 * 2 ** Math.max(0, Math.min(attempts - 1, 4)),
 		MAX_RETRY_DELAY_MS,
 	);
 	const next = {
-		...latest,
+		...item,
 		attempts,
-		nextAttemptAt: Date.now() + retryDelay,
+		nextAttemptAt:
+			attempts < REQUEST_ATTEMPTS ? Date.now() + retryDelay : Number.MAX_SAFE_INTEGER,
 	};
 	await browser.storage.local.set({ [key]: next });
-	await scheduleRetry(next.nextAttemptAt);
+	if (attempts < REQUEST_ATTEMPTS) {
+		await scheduleRetry(next.nextAttemptAt);
+	}
+	return attempts < REQUEST_ATTEMPTS;
 }
 
 async function sendPendingIngestion(key: string, item: PendingIngestion): Promise<unknown> {
 	try {
 		await setSyncStatus("pushing");
-		const response = await fetchWithRetry(`${API_URL}/api/v1/ingest`, {
+		const response = await fetchWithTimeout(`${API_URL}/api/v1/ingest`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify(item.payload),
+			keepalive: true,
 		});
 
 		if (!response.ok) {
-			const details = await response.text();
 			if (isRetryableStatus(response.status)) {
-				await deferIngestion(key, item);
-				await setSyncStatus("error", "API unavailable; retrying");
+				const willRetry = await deferIngestion(key, item);
+				await setSyncStatus(
+					"error",
+					willRetry ? "API unavailable; retrying" : "Sync retry limit reached",
+				);
 			} else {
 				await removePendingIfCurrent(key, item);
 				await setSyncStatus("error", `Sync error (${response.status})`);
 			}
-			console.error("[Daam] ingestion rejected", {
+			logger.dataSendFailed();
+			return {
+				success: false,
 				status: response.status,
-				details,
-				productId: item.payload.productId,
-			});
-			return { success: false, status: response.status, details };
+				errorCode: "INGEST_REJECTED",
+				reason: `Ingestion failed with status ${response.status}.`,
+			};
 		}
 
 		const result = (await response.json()) as {
@@ -149,17 +169,22 @@ async function sendPendingIngestion(key: string, item: PendingIngestion): Promis
 			[`daam:last-sent:${item.payload.platform}:${item.payload.productId}`]: Date.now(),
 		});
 		await setSyncStatus("pushed");
-		console.info("[Daam] ingestion succeeded", result);
 		return result;
 	} catch (error) {
-		await deferIngestion(key, item);
-		await setSyncStatus("error", "API unavailable; retrying");
-		console.error("[Daam] unable to reach ingestion API", {
-			apiUrl: API_URL,
-			productId: item.payload.productId,
-			error,
-		});
-		return { success: false, status: 0, error: "API unreachable; retrying" };
+		const willRetry = await deferIngestion(key, item);
+		await setSyncStatus(
+			"error",
+			willRetry ? "API unavailable; retrying" : "Sync retry limit reached",
+		);
+		logger.dataSendFailed();
+		return {
+			success: false,
+			status: 0,
+			errorCode: "INGEST_REQUEST_FAILED",
+			error: willRetry
+				? "Could not reach the ingestion service; retrying."
+				: "Could not reach the ingestion service.",
+		};
 	}
 }
 
@@ -207,7 +232,7 @@ async function flushPendingIngestions(): Promise<void> {
 		);
 		for (const [key, value] of pendingEntries) {
 			const item = value as PendingIngestion;
-			if (item.nextAttemptAt <= Date.now()) {
+			if (item.attempts < REQUEST_ATTEMPTS && item.nextAttemptAt <= Date.now()) {
 				await processPendingIngestion(key, item);
 			}
 		}
@@ -215,6 +240,7 @@ async function flushPendingIngestions(): Promise<void> {
 		const remaining = await browser.storage.local.get(null);
 		const nextRetry = Object.entries(remaining)
 			.filter(([key]) => key.startsWith(PENDING_INGESTION_PREFIX))
+			.filter(([, value]) => (value as PendingIngestion).attempts < REQUEST_ATTEMPTS)
 			.map(([, value]) => (value as PendingIngestion).nextAttemptAt)
 			.filter((time) => Number.isFinite(time))
 			.sort((left, right) => left - right)[0];
@@ -257,46 +283,55 @@ export default defineBackground(() => {
 	void flushPendingIngestions();
 
 	browser.runtime.onMessage.addListener(async (message: DaamRuntimeMessage) => {
+		if (message.type === "CANCEL_PRODUCT_INTELLIGENCE") {
+			intelligenceRequests.get(message.requestId)?.abort();
+			return;
+		}
+
 		if (message.type === "FETCH_PRODUCT_INTELLIGENCE") {
 			const endpoint =
 				`${API_URL}/api/v1/product/` +
 				`${encodeURIComponent(message.platform)}/` +
 				`${encodeURIComponent(message.productId)}`;
 
+			const controller = new AbortController();
+			intelligenceRequests.set(message.requestId, controller);
 			try {
-				const response = await fetchWithRetry(endpoint);
+				const response = await fetchWithTimeout(endpoint, { signal: controller.signal });
 				if (response.status === 404) {
-					console.info("[Daam] no product history is available yet", {
-						productId: message.productId,
-					});
 					return null;
 				}
 				if (!response.ok) {
-					const details = await response.text();
-					console.error("[Daam] product intelligence request failed", {
-						status: response.status,
-						details,
-						productId: message.productId,
-					});
-					return null;
+					logger.dataFetchFailed();
+					return {
+						errorCode: "PRODUCT_FETCH_REJECTED",
+						reason: `Price history request failed with status ${response.status}.`,
+					};
 				}
 
 				const result: unknown = await response.json();
 				if (!isProductIntelligenceResponse(result)) {
-					console.error("[Daam] product intelligence response was invalid", {
-						productId: message.productId,
-					});
-					return null;
+					logger.dataFetchFailed();
+					return {
+						errorCode: "PRODUCT_FETCH_INVALID",
+						reason: "The price history response was invalid.",
+					};
 				}
 
 				return result satisfies ProductIntelligenceResponse;
-			} catch (error) {
-				console.error("[Daam] unable to fetch product intelligence", {
-					apiUrl: API_URL,
-					productId: message.productId,
-					error,
-				});
+			} catch {
+				if (!controller.signal.aborted) {
+					logger.dataFetchFailed();
+					return {
+						errorCode: "PRODUCT_FETCH_FAILED",
+						reason: "Could not reach the price history service within 5 seconds.",
+					};
+				}
 				return null;
+			} finally {
+				if (intelligenceRequests.get(message.requestId) === controller) {
+					intelligenceRequests.delete(message.requestId);
+				}
 			}
 		}
 

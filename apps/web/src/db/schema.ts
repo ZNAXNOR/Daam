@@ -1,11 +1,18 @@
 import {
 	boolean,
 	integer,
+	pgEnum,
 	pgTable,
 	text,
 	timestamp,
 	uniqueIndex,
 } from "drizzle-orm/pg-core";
+
+export const sellerTypeEnum = pgEnum("seller_type", [
+	"platform",
+	"third_party",
+	"unknown",
+]);
 
 export const platforms = pgTable("platforms", {
 	id: integer().primaryKey().generatedAlwaysAsIdentity(),
@@ -56,6 +63,7 @@ export const priceHistory = pgTable("price_history", {
 	dealPrice: integer("deal_price").notNull(),
 	mrp: integer(),
 	inStock: boolean("in_stock").notNull().default(true),
+	sellerType: sellerTypeEnum("seller_type").notNull().default("unknown"),
 	recordedAt: timestamp("recorded_at", {
 		withTimezone: true,
 		mode: "date",

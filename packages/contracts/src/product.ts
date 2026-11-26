@@ -11,6 +11,7 @@ export type StorePlatform =
 	| "target";
 
 export type ExtractionMethod = "ld_json" | "main_state" | "dom_selector";
+export type SellerType = "platform" | "third_party" | "unknown";
 
 export interface ProductPayload {
 	platform: StorePlatform;
@@ -21,6 +22,7 @@ export interface ProductPayload {
 	currency: string;
 	couponDiscount?: number;
 	inStock: boolean;
+	sellerType?: SellerType;
 	sellerName?: string | null;
 	sellerId?: string | null;
 	imageHash?: string;
@@ -84,6 +86,7 @@ export type ProductValidationCode =
 	| "INVALID_COUPON"
 	| "COUPON_EXCEEDS_DEAL_PRICE"
 	| "INVALID_CURRENCY"
+	| "INVALID_SELLER_TYPE"
 	| "INVALID_IMAGE_HASH"
 	| "INVALID_TIMESTAMP";
 
@@ -195,6 +198,13 @@ export function validateProductPayload(
 
 	if (!CURRENCY_PATTERN.test(payload.currency)) {
 		errors.push("INVALID_CURRENCY");
+	}
+
+	if (
+		payload.sellerType !== undefined &&
+		!["platform", "third_party", "unknown"].includes(payload.sellerType)
+	) {
+		errors.push("INVALID_SELLER_TYPE");
 	}
 
 	if (payload.imageHash !== undefined && !IMAGE_HASH_PATTERN.test(payload.imageHash)) {

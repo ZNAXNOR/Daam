@@ -15,20 +15,24 @@ const AMAZON_DOMAINS = [
 
 const envDir = path.resolve(__dirname, "../..");
 
-function readApiUrl(envPath: string): string | undefined {
+function readEnvValue(envPath: string, key: string): string | undefined {
 	if (!fs.existsSync(envPath)) {
 		return undefined;
 	}
 	const env = fs.readFileSync(envPath, "utf8");
-	const match = env.match(/^WXT_API_URL=(.*)$/m);
+	const match = env.match(new RegExp(`^${key}=(.*)$`, "m"));
 	return match?.[1]?.trim().replace(/^['"]|['"]$/g, "");
 }
 
 const apiUrl =
-	readApiUrl(path.join(envDir, ".env")) ??
-	readApiUrl(path.join(__dirname, ".env")) ??
+	readEnvValue(path.join(envDir, ".env"), "WXT_API_URL") ??
+	readEnvValue(path.join(__dirname, ".env"), "WXT_API_URL") ??
 	"http://localhost:3002";
 const apiOrigin = new URL(apiUrl).origin;
+const selectorsUrl =
+	readEnvValue(path.join(envDir, ".env"), "WXT_SELECTORS_URL") ??
+	readEnvValue(path.join(__dirname, ".env"), "WXT_SELECTORS_URL") ??
+	"https://raw.githubusercontent.com/ZNAXNOR/Daam/refs/heads/Dev/Plugin/apps/extension/src/config/selectors.json";
 
 // See https://wxt.dev/api/reference/wxt/interfaces/inlineconfig.html
 export default defineConfig({
@@ -36,7 +40,12 @@ export default defineConfig({
 		name: "Daam — Price Intelligence",
 		description: "Crowdsourced price verification and fake-discount detector.",
 		permissions: ["storage", "alarms"],
-		host_permissions: [`${apiOrigin}/*`, ...AMAZON_DOMAINS, "*://*.flipkart.com/*"],
+		host_permissions: [
+			`${apiOrigin}/*`,
+			...AMAZON_DOMAINS,
+			"*://*.flipkart.com/*",
+			"https://raw.githubusercontent.com/*",
+		],
 	},
 	vite: (env) => {
 		return {
@@ -44,6 +53,7 @@ export default defineConfig({
 			envPrefix: ["WXT_"],
 			define: {
 				"import.meta.env.WXT_API_URL": JSON.stringify(apiUrl),
+				"import.meta.env.WXT_SELECTORS_URL": JSON.stringify(selectorsUrl),
 			},
 			plugins: [tailwindcss()],
 		};

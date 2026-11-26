@@ -1,13 +1,13 @@
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
+import { logger } from "../logger";
 import * as schema from "./schema";
 
 const databaseUrl = process.env.DATABASE_URL;
 
 if (!databaseUrl) {
-	throw new Error(
-		"DATABASE_URL is required to initialize the Neon database connection.",
-	);
+	logger.dbConnectionFailed();
+	throw new Error("DATABASE_URL is required to initialize the Neon database connection.");
 }
 
 const sql = neon(databaseUrl);

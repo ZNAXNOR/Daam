@@ -72,6 +72,7 @@ export async function findLatestPriceHistory(productId: number) {
 			dealPrice: priceHistory.dealPrice,
 			mrp: priceHistory.mrp,
 			inStock: priceHistory.inStock,
+			sellerType: priceHistory.sellerType,
 			recordedAt: priceHistory.recordedAt,
 		})
 		.from(priceHistory)
@@ -84,11 +85,15 @@ export async function findLatestPriceHistory(productId: number) {
 
 export async function updateLatestPriceHistory(
 	id: number,
-	newPrice: number,
+	values: {
+		dealPrice: number;
+		inStock: boolean;
+		sellerType: "platform" | "third_party" | "unknown";
+	},
 ): Promise<void> {
 	await db
 		.update(priceHistory)
-		.set({ dealPrice: newPrice })
+		.set(values)
 		.where(eq(priceHistory.id, id));
 }
 
@@ -203,6 +208,7 @@ export async function getProductIntelligence(
 			historyId: priceHistory.id,
 			dealPrice: priceHistory.dealPrice,
 			mrp: priceHistory.mrp,
+			inStock: priceHistory.inStock,
 			recordedAt: priceHistory.recordedAt,
 		})
 		.from(products)
@@ -222,33 +228,50 @@ export async function getProductIntelligence(
 		)
 		.orderBy(asc(priceHistory.recordedAt), asc(priceHistory.id));
 
-	const history: ProductIntelligenceHistoryPoint[] = rows.flatMap((row) => {
+	const toHistoryPoint = (
+		row: (typeof rows)[number],
+	): ProductIntelligenceHistoryPoint | null => {
 		if (
 			row.historyId === null ||
 			row.recordedAt === null ||
 			row.dealPrice === null
 		) {
-			return [];
+			return null;
 		}
 
-		return [{
+		return {
 			timestamp: row.recordedAt.toISOString(),
 			effectivePrice: row.dealPrice,
 			...(row.mrp === null ? {} : { mrp: row.mrp }),
-		}];
+		};
+	};
+	const history: ProductIntelligenceHistoryPoint[] = rows.flatMap((row) => {
+		const point = toHistoryPoint(row);
+		return point ? [point] : [];
 	});
 
 	if (history.length === 0) {
 		return null;
 	}
 
-	const prices = history.map((point) => point.effectivePrice);
+	const availableHistory = rows.flatMap((row) => {
+		if (!row.inStock) {
+			return [];
+		}
+		const point = toHistoryPoint(row);
+		return point ? [point] : [];
+	});
+	const statsHistory = availableHistory.length > 0 ? availableHistory : history;
+	const prices = statsHistory.map((point) => point.effectivePrice);
 	const medianPrice = median(prices);
+	const verdict = availableHistory.length > 0
+		? createVerdict(availableHistory, medianPrice)
+		: { code: "tracking_started", label: "Tracking Started", tone: "neutral" } as const;
 
 	return {
-		verdict: createVerdict(history, medianPrice),
+		verdict,
 		stats: {
-			currentPrice: history[history.length - 1].effectivePrice,
+			currentPrice: statsHistory[statsHistory.length - 1].effectivePrice,
 			minPrice: prices.reduce((minimum, price) => Math.min(minimum, price), Infinity),
 			maxPrice: prices.reduce((maximum, price) => Math.max(maximum, price), -Infinity),
 			medianPrice,
@@ -264,6 +287,7 @@ export async function insertPriceHistory(values: {
 	dealPrice: number;
 	mrp: number | null;
 	inStock: boolean;
+	sellerType: "platform" | "third_party" | "unknown";
 }): Promise<void> {
 	await db.insert(priceHistory).values(values);
 }

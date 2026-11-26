@@ -3,11 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const rootEnvPath = resolve(
-	dirname(fileURLToPath(import.meta.url)),
-	"../../../..",
-	".env",
-);
+const rootEnvPath = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..", ".env");
 config({ path: rootEnvPath });
 
 const { db } = await import("./index");
@@ -36,9 +32,7 @@ const seededProducts: SeedProduct[] = [
 		title: "Amazon India demo product - pre-sale price spike",
 		priceAt: (day) =>
 			Math.round(
-				day >= 83
-					? 12999 + Math.sin(day * 0.63) * 140
-					: 9999 + Math.sin(day * 0.41) * 110,
+				day >= 83 ? 12999 + Math.sin(day * 0.63) * 140 : 9999 + Math.sin(day * 0.41) * 110,
 			),
 		mrp: 14999,
 	},
@@ -47,9 +41,7 @@ const seededProducts: SeedProduct[] = [
 		title: "Amazon India demo product - genuine price drop",
 		priceAt: (day) =>
 			Math.round(
-				day >= 86
-					? 15999 + Math.sin(day * 0.52) * 90
-					: 19999 + Math.sin(day * 0.37) * 120,
+				day >= 86 ? 15999 + Math.sin(day * 0.52) * 90 : 19999 + Math.sin(day * 0.37) * 120,
 			),
 		mrp: 24999,
 	},
@@ -101,10 +93,7 @@ async function seedProductHistory(): Promise<void> {
 		await db
 			.delete(priceHistory)
 			.where(
-				and(
-					eq(priceHistory.productId, product.id),
-					eq(priceHistory.sellerId, seller.id),
-				),
+				and(eq(priceHistory.productId, product.id), eq(priceHistory.sellerId, seller.id)),
 			);
 
 		const observations = Array.from({ length: 90 }, (_, day) => ({
@@ -113,17 +102,14 @@ async function seedProductHistory(): Promise<void> {
 			dealPrice: productSeed.priceAt(day),
 			mrp: productSeed.mrp,
 			inStock: true,
+			sellerType: "platform" as const,
 			recordedAt: new Date(now - (89 - day) * DAY_MS),
 		}));
 
 		await db.insert(priceHistory).values(observations);
-		console.info(
-			`Seeded 90 days for amazon_in/${productSeed.productId}.`,
-		);
 	}
 }
 
-seedProductHistory().catch((error: unknown) => {
-	console.error("Development price-history seed failed.", error);
+seedProductHistory().catch(() => {
 	process.exitCode = 1;
 });

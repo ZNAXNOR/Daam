@@ -30,6 +30,11 @@
       "#sellerProfileTriggerId",
       "#bylineInfo"
     ],
+    "sellerContext": [
+      "#merchant-info",
+      "#shipsFromSoldBy_feature_div",
+      "#fulfillerInfoFeature_feature_div"
+    ],
     "availability": [
       "#availability",
       "#outOfStock"
